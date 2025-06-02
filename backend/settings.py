@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
 import os
 from dotenv import load_dotenv
 import cloudinary
@@ -172,3 +173,10 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',  # Optionnel : définir par défaut la permission "authentifié"
     ],
 }
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=2000),  # Durée de vie du token d'accès
+    'REFRESH_TOKEN_LIFETIME': timedelta(minutes=2000),  # Durée de vie du token de rafraîchissement
+}
+
+APPEND_SLASH=False

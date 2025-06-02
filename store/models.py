@@ -1,8 +1,20 @@
 from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
 from cloudinary.models import CloudinaryField
+import os, json, uuid
+from threading import Lock 
 # Create your models here.
 
+base_dir = os.path.dirname(os.path.dirname(__file__))
+
+# Construire le chemin vers le fichier JSON
+PARAMS_PATH = os.path.join(base_dir, 'dashboard', 'parameters.json')
+
+file_lock = Lock()
+
+def load_params():
+    with file_lock, open(PARAMS_PATH, 'r', encoding='utf-8') as f:
+        return json.load(f)
 
 shoe_choices= [
     ('Mocassin', 'Mocassin'),
@@ -20,8 +32,15 @@ choices = {
     'Pant':pant_choices
 }
 
+def get_choices(type_, label):
+    params = load_params()
+    values = params.get(type_, {}).get(label, [])
+    choices = [(value, value) for value in values]
+    return choices
+
+
 class Product(models.Model):
-    ref = models.CharField(max_length=100)
+    ref = models.PositiveIntegerField()
     name = models.CharField(max_length=100)
     price = models.FloatField(validators=[MinValueValidator(0.0)])
     newest = models.BooleanField(default=False) 
@@ -59,7 +78,7 @@ class ProductDetailC(models.Model):
 
 class Shoe(Product):
     productType = models.CharField(default='Shoe', max_length=20, editable=False)
-    category = models.CharField(max_length=100, choices=shoe_choices)
+    category = models.CharField(max_length=100, choices=get_choices("Shoe", "categories"))
     def __str__(self):
         return "%s %s %s"%(self.category, self.ref, self.name)
 
@@ -102,23 +121,31 @@ class PantDetail(ProductDetailC):
         return "%s %s %s"%(self.productId, self.size, self.quantity)
 
 class Client(models.Model):
-    order_id = models.CharField(max_length=100)
-    transaction_id = models.CharField(max_length=100)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     email = models.EmailField()
     phone = models.CharField(max_length=20)
     city = models.CharField(max_length=50)
     address = models.CharField(max_length=100)
-    amount = models.PositiveIntegerField()
-    date = models.CharField(max_length=100, default="")
-    verificaton_status = models.BooleanField(default=False)
 
     def __str__(self):
-        return "%s %s %s"%(self.first_name, self.last_name, self.order_id)
+        return "%s %s"%(self.first_name, self.last_name)
 
+
+class Order(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    order_id = models.UUIDField(default = uuid.uuid4, editable=False, unique=True)
+    transaction_id = models.CharField(max_length=100, null=True, blank=True)
+    amount = models.FloatField(validators=[MinValueValidator(0.0)])
+    date = models.CharField(max_length=100, default="")
+    status = models.BooleanField(default=False)
+    exception = models.BooleanField(default = False)
+    waiting = models.BooleanField(default=True)
+    payment_mode = models.BooleanField(default=True, editable=False) #True if is online,  False else
+    currency = models.CharField(max_length=100, default='MAD')
 
 class ProductOrdered(models.Model):
+    order = models.ForeignKey(Order, on_delete=models.CASCADE)
     client = models.ForeignKey(Client, on_delete=models.CASCADE)
     product_id = models.PositiveIntegerField(editable=False)
     product_type = models.CharField(max_length=50)
@@ -132,6 +159,7 @@ class ProductOrdered(models.Model):
 
 class QuantityExceptions(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    order = models.ForeignKey(Order, to_field='order_id', on_delete=models.CASCADE)
     product_type = models.CharField(max_length=20)
     product_category = models.CharField(max_length=50)
     product_ref = models.PositiveIntegerField()

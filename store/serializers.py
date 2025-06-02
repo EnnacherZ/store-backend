@@ -4,7 +4,6 @@ from .models import *
 
 
 class ShoeSerializer(serializers.ModelSerializer):
-    ref = serializers.CharField(read_only=True)
     class Meta:
         model = Shoe
         fields = '__all__'
@@ -51,4 +50,14 @@ class PantDetailSerializer(serializers.ModelSerializer):
 class ProductReviewsSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductReviews
+        fields = '__all__'
+
+class OrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = '__all__'
+
+class QuantityExceptionsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuantityExceptions
         fields = '__all__'

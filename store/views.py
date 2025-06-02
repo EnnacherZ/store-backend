@@ -1,13 +1,11 @@
 from django.utils.encoding import smart_str
-import time
+import time, os, json, datetime
 from .models import *
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from django.http import HttpResponseForbidden, JsonResponse, StreamingHttpResponse
-import datetime
 from rest_framework import status
 from .serializers import *
-import json
-import os
 from dotenv import load_dotenv
 from youcanpay.youcan_pay import YouCanPay
 from youcanpay.models.data import Customer
@@ -35,7 +33,10 @@ models_dict = {'Shoe':(Shoe, ShoeSerializer, ShoeDetail, ShoeDetailSerializer),
      
 def data_dict(data, model, modelDetail, productType):return({'data':data, 'model':model, 'modelDetail':modelDetail, 'productType':productType})
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def handlePayment(request):
+    new_exception = None
+    data = json.loads(request.body)
     try:
         if origin_checker(request):return HttpResponseForbidden(forbbiden_message)
         else:
@@ -43,38 +44,49 @@ def handlePayment(request):
                 data = json.loads(request.body)
 
                 # Extraction des données de la requête
-                shoes_data = data.get('shirts_order', [])
-                sandals_data = data.get('shoes_order', [])
-                shirts_data = data.get('sandals_order', [])
+                shirts_data = data.get('shirts_order', [])
+                shoes_data = data.get('shoes_order', [])
+                sandals_data = data.get('sandals_order', [])
                 pants_data = data.get('pants_order', [])
+
                 
                 # Créez un dictionnaire des données
-                shirts_order = data_dict(shoes_data, Shirt, ShirtDetail, 'Shirts')
-                shoes_order = data_dict(sandals_data, Shoe, ShoeDetail, 'Shoes')
-                sandals_order = data_dict(shirts_data, Sandal, SandalDetail, 'Sandals')  # Corrigé ici pour utiliser Sandal et SandalDetail
+                shirts_order = data_dict(shirts_data, Shirt, ShirtDetail, 'Shirts')
+                shoes_order = data_dict(shoes_data, Shoe, ShoeDetail, 'Shoes')
+                sandals_order = data_dict(sandals_data, Sandal, SandalDetail, 'Sandals')  # Corrigé ici pour utiliser Sandal et SandalDetail
                 pants_order = data_dict(pants_data, Pant, PantDetail, 'Pants')
                 
                 # Récupérer le transaction_id et client_data de la requête
                 transaction_id = data.get('transaction_id', '')
-                client_data = data.get('client_data', {})
+                order_id = data.get('orderId', {})
                 trans_date = data.get('date','')
+                online_payment = data.get('onlinePayment',False)
                 # Liste pour stocker les produits commandés
                 ordered_product = {'Shoes':[], 'Sandals':[], 'Shirts':[], 'Pants':[]}
                 orders = [shoes_order, sandals_order, shirts_order, pants_order]
-
-                if client_data:
-                    new_client =Client.objects.create(
+                # if online_payment:
+                if online_payment:
+                    if order_id: the_order = Order.objects.get(order_id = order_id, waiting = True)
+                    the_order.transaction_id = transaction_id; the_order.date = trans_date; the_order.waiting = False; the_order.payment_mode = online_payment
+                else:
+                    customer_params = data.get("client")
+                    new_client = Client.objects.create(
+                        first_name = customer_params['FirstName'],
+                        last_name = customer_params['LastName'],
+                        email = customer_params['Email'],
+                        phone = str(customer_params['Tel']),
+                        city = customer_params['City'],
+                        address = customer_params['Address'])
+                    the_order = Order(
                         transaction_id = transaction_id,
-                        order_id = client_data['OrderId'],
-                        first_name = client_data['FirstName'],
-                        last_name = client_data['LastName'],
-                        email = client_data['Email'],
-                        phone = str(client_data['Tel']),
-                        city = client_data['City'],
-                        address = client_data['Address'],
-                        amount = client_data['Amount'],
-                        date = trans_date)
-                
+                        date = trans_date,
+                        payment_mode = online_payment,
+                        client = new_client,
+                        amount = customer_params['Amount'],
+                        waiting = False,
+                        currency = customer_params['Currency']
+                    )
+
                 # Parcourez toutes les commandes
                 for item in orders:
                     if len(item['data']) > 0:
@@ -90,16 +102,15 @@ def handlePayment(request):
                                 else :
                                     delta = p['quantity'] - prod.quantity
                                     prod.quantity=0
-                                    new_exception = QuantityExceptions(client = new_client,
+                                    the_order.exception = True
+                                    new_exception = QuantityExceptions(client = the_order.client,
+                                                                       order=the_order,
                                                                        product_type = prod1.productType,
                                                                        product_category = prod1.category,
                                                                        product_ref = prod1.ref,
                                                                        product_name=prod1.name,
                                                                        product_size=p['size'],
                                                                        delta_quantity = delta)
-                                    new_exception.save()
-                                prod.save()
-                                
                                 # Ajoutez les informations du produit commandé à la réponse
                                 ordered_product[item['productType']].append({
                                     "productType": prod1.productType,
@@ -112,11 +123,12 @@ def handlePayment(request):
                                     "image":prod1.image.url,
                                     "promo":prod1.promo,
                                     "price":prod1.price, })
-                if new_client:
+                if the_order:
                     for key in ordered_product.keys():
                         for p in ordered_product[key]:
-                            ProductOrdered.objects.create(
-                                client = new_client,
+                            the_order_products = ProductOrdered(
+                                client = the_order.client,
+                                order = the_order,
                                 product_type = p["productType"],
                                 size = p["size"],
                                 quantity = p["quantity"],
@@ -125,21 +137,27 @@ def handlePayment(request):
                                 name = p["name"],
                                 product_id = p["id"]
                             )
+                the_order.save();prod.save();the_order_products.save()
+                if new_exception:new_exception.save()
                 # Retourner une réponse JSON avec la liste des produits commandés
                 return JsonResponse({'ordered_products': ordered_product}, status=200)
 
     except Exception as e:
+        print(data)
         print(e)
         return JsonResponse({'message': f'An error occurred: {str(e)}'}, status=400)
                     
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def get_ip(request):
     ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR'))
     return JsonResponse({'ip': ip})
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def getPaymentToken(request):
     if is_sandbox: YouCanPay.enable_sandbox_mode()
+
     youcan_pay = YouCanPay.instance().use_keys(
     key1,
     key2,
@@ -147,8 +165,23 @@ def getPaymentToken(request):
     data = json.loads(request.body)
     customer_params = data.get('customer', {})
     token_params = data.get('tokenParams', {})
+
+    new_client = Client.objects.create(
+                        first_name = customer_params['first_name'],
+                        last_name = customer_params['last_name'],
+                        email = customer_params['email'],
+                        phone = str(customer_params['phone']),
+                        city = customer_params['city'],
+                        address = customer_params['address'])
+
+    new_order = Order.objects.create(
+                        client = new_client,
+                        amount = token_params.get('amount'),
+                        )
+    
+
     customer_info = Customer(
-        name = customer_params.get("name"), 
+        name = str(customer_params.get("first_name") + customer_params.get("last_name")),
         address = customer_params.get('address'), 
         zip_code = customer_params.get('zip_code'), 
         city = customer_params.get('city'), 
@@ -159,10 +192,10 @@ def getPaymentToken(request):
     )
     
     token_params = TokenData(
-        amount = token_params.get('amount'),
+        amount = token_params.get('amount')*100,
         currency = token_params.get('currency'),
-        customer_ip = token_params.get('customer'),
-        order_id = token_params.get('order_id'),
+        customer_ip = '', # token_params.get('customer'),
+        order_id = str(new_order.order_id),
         success_url = token_params.get('success_url'),
         error_url = token_params.get('error_url'),
         customer_info= customer_info,
@@ -171,11 +204,12 @@ def getPaymentToken(request):
         if origin_checker(request):return HttpResponseForbidden(forbbiden_message)
         else:                                   
             token = youcan_pay.token.create_from(token_params)
-            return  JsonResponse({'token': token.id})
+            return  JsonResponse({'token': token.id, 'order_id': str(new_order.order_id)})
     except Exception as e :
         return JsonResponse({'message': f'error occured : {str(e)}'})
     
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def add_review(request):
     if request.method == 'POST':
         if origin_checker(request):return HttpResponseForbidden(forbbiden_message)
@@ -213,6 +247,7 @@ def add_review(request):
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def get_reviews(request):
     if origin_checker(request): return HttpResponseForbidden(forbbiden_message)
     else:
@@ -230,6 +265,7 @@ def get_reviews(request):
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def get_searched_product(request):
     if origin_checker(request) : return HttpResponseForbidden(forbbiden_message)
     else:
@@ -251,6 +287,7 @@ def get_searched_product(request):
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def get_newest_products(request,):
     try:
         if origin_checker(request):return HttpResponseForbidden(forbbiden_message)
@@ -274,6 +311,7 @@ def get_newest_products(request,):
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def get_newest_shoes(request):
     products = Shoe.objects.filter(newest=True)
     products_serializers = ShoeSerializer(products, many =True)
@@ -283,6 +321,7 @@ def get_newest_shoes(request):
     except Exception as e : return JsonResponse({"message": f"An error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def get_newest_sandals(request): 
     products = Sandal.objects.filter(newest=True)
     products_serializers = SandalSerializer(products, many =True)
@@ -292,6 +331,7 @@ def get_newest_sandals(request):
     except Exception as e : return JsonResponse({"message": f"An error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def get_newest_shirts(request):
     products = Shirt.objects.filter(newest=True)
     products_serializers = ShirtSerializer(products, many =True)
@@ -301,6 +341,7 @@ def get_newest_shirts(request):
     except Exception as e : return JsonResponse({"message": f"An error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def get_newest_pants(request):
     products = Pant.objects.filter(newest=True)
     products_serializers = PantSerializer(products, many =True)
@@ -309,11 +350,22 @@ def get_newest_pants(request):
         return JsonResponse({'products' :products_serializers.data}, status=status.HTTP_200_OK)
     except Exception as e : return JsonResponse({"message": f"An error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-@api_view(['GET'])
-def get_req(request):
-    referer = request.META.get('X-Forwarded-For','none')
-    return JsonResponse({'req':origin_checker(request)})
 
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_products(request):
+    if not(origin_checker(request)):
+        try:
+            productType = request.GET.get('productType',None)
+            type_models :tuple = models_dict[productType]
+            products = type_models[0].objects.all()
+            products_details = type_models[2].objects.all()
+            serialized_products = type_models[1](products, many=True)
+            serialized_details = type_models[3](products_details, many=True)
+            return JsonResponse({'products':serialized_products.data, 'products_details':serialized_details.data}, status=status.HTTP_200_OK)
+        except Exception as e : return JsonResponse({"message": f"An error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    else : return HttpResponseForbidden(forbbiden_message) 
 
     
 
