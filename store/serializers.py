@@ -47,12 +47,28 @@ class PantDetailSerializer(serializers.ModelSerializer):
         model = PantDetail
         fields = '__all__'
 
+
+class ClientSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Client
+        fields = '__all__'
+
+
+
 class ProductReviewsSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductReviews
         fields = '__all__'
 
+
+class ProductOrderedSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductOrdered
+        fields = '__all__'
+
 class OrderSerializer(serializers.ModelSerializer):
+    client = ClientSerializer()
+    ordered_products = ProductOrderedSerializer(many = True, read_only = True)
     class Meta:
         model = Order
         fields = '__all__'

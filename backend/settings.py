@@ -150,16 +150,20 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # MEDIA_URL = '/media/'
 # MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 CLOUDINARY_STORAGE = {
-    'CLOUD_NAME' : os.environ.get('cloudinary_cloud_name'),   
-    'API_KEY' : os.environ.get('cloudinary_api_key'),      
-    'API_SECRET': os.environ.get('cloudinary_api_secret'),  
-
+    'CLOUD_NAME': os.environ.get("cloudinary_cloud_name"),
+    'API_KEY': os.environ.get("cloudinary_api_key"),
+    'API_SECRET': os.environ.get("cloudinary_api_secret"),
+    'RESOURCE_TYPE': 'raw',
 }
+# fichiers raw (pdf, doc, zip, etc.)
+
+
 cloudinary.config( 
     cloud_name = os.environ.get('cloudinary_cloud_name'), 
     api_key = os.environ.get('cloudinary_api_key'), 
     api_secret = os.environ.get('cloudinary_api_secret'), # Click 'View API Keys' above to copy your API secret
-    secure=True
+    secure=True,
+    access_mode = 'public'
 )
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 

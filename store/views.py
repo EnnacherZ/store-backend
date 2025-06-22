@@ -1,8 +1,9 @@
 from django.utils.encoding import smart_str
 import time, os, json, datetime
 from .models import *
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import AllowAny
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.http import HttpResponseForbidden, JsonResponse, StreamingHttpResponse
 from rest_framework import status
 from .serializers import *
@@ -10,6 +11,7 @@ from dotenv import load_dotenv
 from youcanpay.youcan_pay import YouCanPay
 from youcanpay.models.data import Customer
 from youcanpay.models.token import TokenData
+from django.db import transaction
 
 load_dotenv()
 key1 = os.environ.get('payment_second_key')
@@ -34,20 +36,24 @@ models_dict = {'Shoe':(Shoe, ShoeSerializer, ShoeDetail, ShoeDetailSerializer),
 def data_dict(data, model, modelDetail, productType):return({'data':data, 'model':model, 'modelDetail':modelDetail, 'productType':productType})
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@parser_classes([MultiPartParser, FormParser])
+@transaction.atomic
 def handlePayment(request):
     new_exception = None
-    data = json.loads(request.body)
+    global the_order
     try:
         if origin_checker(request):return HttpResponseForbidden(forbbiden_message)
         else:
             if request.method == 'POST':
+                #data = json.loads(request.body)
                 data = json.loads(request.body)
+                print(data)
 
                 # Extraction des données de la requête
-                shirts_data = data.get('shirts_order', [])
-                shoes_data = data.get('shoes_order', [])
-                sandals_data = data.get('sandals_order', [])
-                pants_data = data.get('pants_order', [])
+                shirts_data = data.get('shirts_order', '[]')
+                shoes_data = data.get('shoes_order', '[]')
+                sandals_data = data.get('sandals_order', '[]')
+                pants_data = data.get('pants_order', '[]')
 
                 
                 # Créez un dictionnaire des données
@@ -55,26 +61,28 @@ def handlePayment(request):
                 shoes_order = data_dict(shoes_data, Shoe, ShoeDetail, 'Shoes')
                 sandals_order = data_dict(sandals_data, Sandal, SandalDetail, 'Sandals')  # Corrigé ici pour utiliser Sandal et SandalDetail
                 pants_order = data_dict(pants_data, Pant, PantDetail, 'Pants')
-                
+
                 # Récupérer le transaction_id et client_data de la requête
                 transaction_id = data.get('transaction_id', '')
-                order_id = data.get('orderId', {})
+                order_id = data.get('orderId')
                 trans_date = data.get('date','')
-                online_payment = data.get('onlinePayment',False)
+                online_payment = True if str(data.get('onlinePayment')).lower() == 'true' else False
+                #invoice = request.FILES.get('invoice')
                 # Liste pour stocker les produits commandés
                 ordered_product = {'Shoes':[], 'Sandals':[], 'Shirts':[], 'Pants':[]}
                 orders = [shoes_order, sandals_order, shirts_order, pants_order]
                 # if online_payment:
                 if online_payment:
                     if order_id: the_order = Order.objects.get(order_id = order_id, waiting = True)
-                    the_order.transaction_id = transaction_id; the_order.date = trans_date; the_order.waiting = False; the_order.payment_mode = online_payment
-                else:
-                    customer_params = data.get("client")
+                    the_order.transaction_id = transaction_id; the_order.date = trans_date; the_order.waiting = False; the_order.payment_mode = online_payment;# the_order.invoice = invoice
+                    the_order.save()
+                elif online_payment == False:
+                    customer_params = data.get("client", '{}')
                     new_client = Client.objects.create(
                         first_name = customer_params['FirstName'],
                         last_name = customer_params['LastName'],
                         email = customer_params['Email'],
-                        phone = str(customer_params['Tel']),
+                        phone = str(customer_params['Phone']),
                         city = customer_params['City'],
                         address = customer_params['Address'])
                     the_order = Order(
@@ -84,9 +92,9 @@ def handlePayment(request):
                         client = new_client,
                         amount = customer_params['Amount'],
                         waiting = False,
-                        currency = customer_params['Currency']
+                        currency = customer_params['Currency'],
+                        #invoice = invoice
                     )
-
                 # Parcourez toutes les commandes
                 for item in orders:
                     if len(item['data']) > 0:
@@ -96,13 +104,14 @@ def handlePayment(request):
                             prod1 = item['model'].objects.get(id=p['id'])
                             
                             # Si le produit est trouvé, mettez à jour la quantité et sauvegardez
-                            if prod:
-                                if prod.quantity >= p['quantity']:
+
+                            if prod.quantity >= p['quantity']:
                                     prod.quantity -= p['quantity']
-                                else :
+                                    prod.save();the_order.save()
+                            else :
                                     delta = p['quantity'] - prod.quantity
-                                    prod.quantity=0
-                                    the_order.exception = True
+                                    prod.quantity=0;prod.save()
+                                    the_order.exception = True;the_order.save()
                                     new_exception = QuantityExceptions(client = the_order.client,
                                                                        order=the_order,
                                                                        product_type = prod1.productType,
@@ -111,8 +120,10 @@ def handlePayment(request):
                                                                        product_name=prod1.name,
                                                                        product_size=p['size'],
                                                                        delta_quantity = delta)
+                                    new_exception.save()
                                 # Ajoutez les informations du produit commandé à la réponse
-                                ordered_product[item['productType']].append({
+                            the_order.save()
+                            ordered_product[item['productType']].append({
                                     "productType": prod1.productType,
                                     "size": p['size'],
                                     "quantity": p['quantity'],
@@ -122,7 +133,7 @@ def handlePayment(request):
                                     "id": prod1.id,
                                     "image":prod1.image.url,
                                     "promo":prod1.promo,
-                                    "price":prod1.price, })
+                                    "price":prod1.price})
                 if the_order:
                     for key in ordered_product.keys():
                         for p in ordered_product[key]:
@@ -135,16 +146,21 @@ def handlePayment(request):
                                 category = p["category"],
                                 ref = p["ref"],
                                 name = p["name"],
-                                product_id = p["id"]
+                                product_id = p["id"],
+                                price = p["price"]
                             )
-                the_order.save();prod.save();the_order_products.save()
-                if new_exception:new_exception.save()
-                # Retourner une réponse JSON avec la liste des produits commandés
-                return JsonResponse({'ordered_products': ordered_product}, status=200)
+                            the_order_products.save()
+                    
+                            
+                    payment_res = {
+                        "order_id": str(the_order.order_id),
+                        "amount": the_order.amount,
+                        "currency": the_order.currency
+                    }
+                
+                return JsonResponse({'ordered_products': ordered_product, "paymentResponse":payment_res}, status=200)
 
     except Exception as e:
-        print(data)
-        print(e)
         return JsonResponse({'message': f'An error occurred: {str(e)}'}, status=400)
                     
 @api_view(['POST'])

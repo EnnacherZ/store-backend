@@ -2,7 +2,8 @@ from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
 from cloudinary.models import CloudinaryField
 import os, json, uuid
-from threading import Lock 
+from threading import Lock
+from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
 # Create your models here.
 
 base_dir = os.path.dirname(os.path.dirname(__file__))
@@ -143,9 +144,13 @@ class Order(models.Model):
     waiting = models.BooleanField(default=True)
     payment_mode = models.BooleanField(default=True, editable=False) #True if is online,  False else
     currency = models.CharField(max_length=100, default='MAD')
+    invoice = models.FileField(storage=RawMediaCloudinaryStorage(), upload_to='documents/invoices', null=True, blank=True)
+    delivery_form = models.FileField(storage=RawMediaCloudinaryStorage(), upload_to='documents/delivery_forms', null=True, blank=True)
+    def __str__(self):
+        return "%s "%(self.order_id)
 
 class ProductOrdered(models.Model):
-    order = models.ForeignKey(Order, on_delete=models.CASCADE)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='ordered_products')
     client = models.ForeignKey(Client, on_delete=models.CASCADE)
     product_id = models.PositiveIntegerField(editable=False)
     product_type = models.CharField(max_length=50)
@@ -154,6 +159,7 @@ class ProductOrdered(models.Model):
     category = models.CharField(max_length=50)
     ref = models.CharField(max_length=50)
     name = models.CharField(max_length=50)
+    price = models.FloatField(validators=[MinValueValidator(0)])
     def __str__(self):
         return "%s %s %s %s"%(self.client, self.product_type,self.category, self.name)
 

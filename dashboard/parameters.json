@@ -1,11 +1,20 @@
 {
-  "Shoe": {
-    "categories": [
-      "ahmed",
-      "mostapha",
-      "Moccassin",
-      "Basket",
-      "Classic"
+  "types": [
+    "Shoe",
+    "Sandal",
+    "Shirt",
+    "Pant"
+  ],
+  "categories": {
+    "Sandal": [
+      [
+        "Saw",
+        "Saw"
+      ],
+      [
+        "Bgbd",
+        "Bgbd"
+      ]
     ]
   }
 }

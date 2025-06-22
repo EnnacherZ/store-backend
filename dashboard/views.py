@@ -11,6 +11,7 @@ from store.models import *
 from store.serializers import *
 import os, json
 from threading import Lock
+from cloudinary.uploader import upload
 # Create your views here.
 
 load_dotenv()
@@ -25,6 +26,12 @@ def origin_checker(request):
 
 
 
+product_types = {"Shoe":Shoe, "Sandal":Sandal, "Shirt":Shirt, "Pant":Pant}
+productDetail_types = {"Shoe":ShoeDetail, "Sandal":SandalDetail, "Shirt":ShirtDetail, "Pant":PantDetail}
+productSerializer_types = {"Shoe":ShoeSerializer, "Sandal":SandalSerializer, "Shirt":ShirtSerializer, "Pant":PantSerializer}
+productDetailSerializer_types = {"Shoe":ShoeDetailSerializer, "Sandal":SandalDetailSerializer, "Shirt":ShirtDetailSerializer, "Pant":PantDetailSerializer}
+
+
 class CreateUserView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -35,6 +42,7 @@ class ShoeViewSet(generics.ListCreateAPIView):
     serializer_class = ShoeSerializer
     permission_classes = [permission()]
     parser_classes = (MultiPartParser, FormParser)
+
 
 class ShoeManager(generics.RetrieveUpdateDestroyAPIView):
     queryset = Shoe.objects.all()
@@ -84,6 +92,35 @@ class ShoeDetailViewSet(generics.ListCreateAPIView):
     serializer_class = ShoeDetailSerializer
     permission_classes = [permission()]
     parser_classes = (MultiPartParser, FormParser)
+
+class OrderViewSet(generics.ListCreateAPIView):
+    queryset = Order.objects.all()
+    serializer_class = OrderSerializer
+    permission_classes = [permission()]
+    parser_classes = (MultiPartParser, FormParser)   
+
+class OrderManager(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Order.objects.all()
+    serializer_class = OrderSerializer
+    permission_classes = [permission()]
+    parser_classes = (MultiPartParser, FormParser)   
+
+
+    # def partial_update(self, request, *args, **kwargs):
+    #     instance = self.get_object()
+
+    #     # Upload conditionnel pour pdf_invoice
+    #     if 'invoice' in request.FILES:
+    #         result_invoice = upload(request.FILES['invoice'], resource_type='raw')
+    #         instance.invoice = result_invoice['secure_url']
+
+    #     # Upload conditionnel pour pdf_receipt
+    #     if 'delivery_form' in request.FILES:
+    #         result_delivery_form= upload(request.FILES['delivery_form'], resource_type='raw')
+    #         instance.delivery_form = result_delivery_form['secure_url']
+
+    #     instance.save()
+    #     return super().partial_update(request, *args, **kwargs)
 
 
 @api_view(['GET'])
@@ -225,21 +262,56 @@ def save_params(data):
 def add_product_parameters(request):
     try:
         data = json.loads(request.body)
-        type = data.get("productType")
-        label = data.get("label")
+
+        type_ = data.get("productType")
+        param = data.get("param")
         values = data.get("values")
+
+        if not isinstance(param, str) or not isinstance(type_, str):
+            raise ValueError("param and productType must be strings.")
+
+        if not isinstance(values, list):
+            raise ValueError("values must be a list.")
 
         params = load_params()
 
-        if type in params:
-            if label in params[type]:
+        if param in params:
+            if type_ in params[param]:
+                # S'assurer que c'est une liste de tuples
+                current_values = params[param][type_]
+                if not isinstance(current_values, list):
+                    current_values = []
                 for i in values:
-                    if i not in params[type][label]:
-                        params[type][label].append(i)
+                    tup = (i, i)
+                    if tup not in current_values:
+                        current_values.append(tup)
+                params[param][type_] = current_values
             else:
-                params[type][label] = values
+                # Nouvelle liste de tuples
+                params[param][type_] = [(i, i) for i in values]
+
+        save_params(params)
+        return JsonResponse({"message": "ok!"}, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        print(e)
+        return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+@api_view(['POST'])
+@permission_classes([permission()])
+def add_product_types(request):
+    try:
+        data = json.loads(request.body)
+        type_ = 'types'
+        values = data.get("values")
+
+        params = load_params()
+        if type_ in params:
+            for i in values:
+                if i not in params[type_]:
+                    params[type_].append(i)
         else:
-            params[type] = {label: values}
+            params[type_] = values
+
 
         save_params(params)
         return JsonResponse({"message": "ok!"}, status=status.HTTP_201_CREATED)
@@ -249,10 +321,64 @@ def add_product_parameters(request):
 
 @api_view(['GET'])
 @permission_classes([permission()])
-def get_choices(request):
-    type_ = request.GET.get('productType')
-    label = request.GET.get('label')
+def get_params(request):
+    parameters = {}
+    try:
+        param = request.GET.get('param')
+        params = load_params()
+        values = params.get(param, {})
+        for type_ in values:
+            parameters[type_] = []
+            for attribut in values[type_]:
+                parameters[type_].append(attribut[0])
+        return JsonResponse({f"{param}":parameters}, status = status.HTTP_200_OK)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+@api_view(['GET'])
+@permission_classes([permission()])
+def get_products_types(request):
     params = load_params()
-    values = params.get(type_, {}).get(label, [])
-    choices = [(value, value) for value in values]
-    return JsonResponse({"data":choices}, status = status.HTTP_200_OK)
+    values = params.get('types', [])
+    choices = [value for value in values]
+    return JsonResponse({f"types":choices}, status = status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([permission()])
+def get_products_choices(request):
+    product_type = request.GET.get('productType')
+    product = product_types[product_type]
+    querySet = product.objects.all()
+    serializer = ProductChoicesSerializer(product)
+    data = serializer(querySet, many = True).data
+    return JsonResponse({"choices":data}, status= status.HTTP_200_OK)
+
+@api_view(['GET'])
+@permission_classes([permission()])
+def get_product_details(request):
+    try:
+        product_id = request.GET.get('productId')
+        product_type = request.GET.get('productType')
+        product = productDetail_types[product_type]
+        querySet = product.objects.filter(productId = product_id)
+        serializer = productDetailSerializer_types[product_type](querySet, many = True)
+        return JsonResponse({"data":serializer.data}, status= status.HTTP_200_OK)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    
+@api_view(['GET'])
+@permission_classes([permission()])
+def get_orders(request):
+    try:
+        all_orders = Order.objects.all().order_by('-exception')
+        remaining_orders = Order.objects.filter(status = False).order_by('-exception')
+        delivered_orders = Order.objects.filter(status=True).order_by('-exception')
+        all_serialized = OrderSerializer(all_orders, many=True).data
+        remaining_serialized = OrderSerializer(remaining_orders, many=True).data
+        delivered_serialized = OrderSerializer(delivered_orders, many=True).data
+        return JsonResponse({"allOrders":all_serialized, "remainingOrders":remaining_serialized, "deliveredOrders":delivered_serialized}, status= status.HTTP_200_OK)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
