@@ -45,4 +45,5 @@ urlpatterns = [
     path('api/getSearchedProd', get_searched_product),
     path('api/addReview', add_review),
     path('api/getReviews', get_reviews),
+    path('api/checkOrder', check_order)
 ]

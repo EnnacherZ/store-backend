@@ -74,6 +74,7 @@ class OrderSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class QuantityExceptionsSerializer(serializers.ModelSerializer):
+    order = OrderSerializer()
     class Meta:
         model = QuantityExceptions
         fields = '__all__'

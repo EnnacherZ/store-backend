@@ -385,6 +385,74 @@ def get_products(request):
 
     
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def check_order(request):
+    try:
+        order_id = request.GET.get('orderID')
+        the_order = Order.objects.get(order_id = order_id)
+        state = the_order.status
+        serialized_order = OrderSerializer(the_order, many = False)
+        client = serialized_order.data["client"]
+        return JsonResponse({'state': state, 'found': True, 'error':False, 'client' : client}, status=status.HTTP_200_OK)
+    except Order.DoesNotExist:
+        return JsonResponse({'found': False, 'error':False})
+    except Exception as e :
+        return JsonResponse({'error':True})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #EventSoure functions
