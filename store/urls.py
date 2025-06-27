@@ -34,7 +34,7 @@ urlpatterns = [
     # path('api/getSandalsNew/', sse_sandals_new),
     # path('api/getShirtsNew/', sse_shirts_new),
     path('api/getProducts', get_products),
-    path('api/handlepay/', handlePayment),
+    path('api/handlepay/', handle_payment),
     path('api/ip', get_ip, name='get_ip'),
     path('api/getPaymentToken', getPaymentToken),
     path('api/getAllProducts', get_newest_products),

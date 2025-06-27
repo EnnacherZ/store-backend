@@ -38,130 +38,135 @@ def data_dict(data, model, modelDetail, productType):return({'data':data, 'model
 @permission_classes([AllowAny])
 @parser_classes([MultiPartParser, FormParser])
 @transaction.atomic
-def handlePayment(request):
-    new_exception = None
-    global the_order
+def handle_payment(request):
+    if origin_checker(request):
+        return HttpResponseForbidden(forbbiden_message)
+
+    if request.method != 'POST':
+        return JsonResponse({'message': 'Invalid request method.'}, status=405)
+
     try:
-        if origin_checker(request):return HttpResponseForbidden(forbbiden_message)
+        data = json.loads(request.body)
+        transaction_id = data.get('transaction_id')
+        order_id = data.get('orderId')
+        trans_date = data.get('date', '')
+        online_payment = str(data.get('onlinePayment')).lower() == 'true'
+        client_data = data.get('client', {})
+
+        # Chargement des données produits
+        products_data = {
+            'Shoes': (data.get('shoes_order', []), Shoe, ShoeDetail),
+            'Sandals': (data.get('sandals_order', []), Sandal, SandalDetail),
+            'Shirts': (data.get('shirts_order', []), Shirt, ShirtDetail),
+            'Pants': (data.get('pants_order', []), Pant, PantDetail),
+        }
+
+        ordered_products = {ptype: [] for ptype in products_data}
+
+        # Créer ou récupérer la commande
+        if online_payment:
+            order = Order.objects.get(order_id=order_id, waiting=True)
+            order.transaction_id = transaction_id
+            order.date = trans_date
+            order.waiting = False
+            order.payment_mode = online_payment
         else:
-            if request.method == 'POST':
-                #data = json.loads(request.body)
-                data = json.loads(request.body)
-                print(data)
+            new_client = Client.objects.create(
+                first_name=client_data['FirstName'],
+                last_name=client_data['LastName'],
+                email=client_data['Email'],
+                phone=str(client_data['Phone']),
+                city=client_data['City'],
+                address=client_data['Address']
+            )
+            order = Order.objects.create(
+                transaction_id=transaction_id,
+                date=trans_date,
+                payment_mode=online_payment,
+                client=new_client,
+                amount=client_data['Amount'],
+                waiting=False,
+                currency=client_data['Currency']
+            )
 
-                # Extraction des données de la requête
-                shirts_data = data.get('shirts_order', '[]')
-                shoes_data = data.get('shoes_order', '[]')
-                sandals_data = data.get('sandals_order', '[]')
-                pants_data = data.get('pants_order', '[]')
+        # Traitement des produits
+        for product_type, (items_data, model, model_detail) in products_data.items():
+            for item in items_data:
+                try:
+                    detail_obj = model_detail.objects.select_for_update().get(productId=item['id'], size=item['size'])
+                    product_obj = model.objects.get(id=item['id'])
 
-                
-                # Créez un dictionnaire des données
-                shirts_order = data_dict(shirts_data, Shirt, ShirtDetail, 'Shirts')
-                shoes_order = data_dict(shoes_data, Shoe, ShoeDetail, 'Shoes')
-                sandals_order = data_dict(sandals_data, Sandal, SandalDetail, 'Sandals')  # Corrigé ici pour utiliser Sandal et SandalDetail
-                pants_order = data_dict(pants_data, Pant, PantDetail, 'Pants')
+                    requested_qty = item['quantity']
+                    available = detail_obj.quantity >= requested_qty
+                    exception_id = uuid.uuid4()
+                    if available:
+                        detail_obj.quantity -= requested_qty
+                    else:
+                        delta = requested_qty - detail_obj.quantity
+                        detail_obj.quantity = 0
+                        exception = QuantityExceptions.objects.create(
+                            client=order.client,
+                            order=order,
+                            product_type=product_obj.productType,
+                            product_category=product_obj.category,
+                            product_ref=product_obj.ref,
+                            product_name=product_obj.name,
+                            product_size=item['size'],
+                            delta_quantity=delta,
+                            exception_id = exception_id
+                        )
+                        order.exception = True
 
-                # Récupérer le transaction_id et client_data de la requête
-                transaction_id = data.get('transaction_id', '')
-                order_id = data.get('orderId')
-                trans_date = data.get('date','')
-                online_payment = True if str(data.get('onlinePayment')).lower() == 'true' else False
-                #invoice = request.FILES.get('invoice')
-                # Liste pour stocker les produits commandés
-                ordered_product = {'Shoes':[], 'Sandals':[], 'Shirts':[], 'Pants':[]}
-                orders = [shoes_order, sandals_order, shirts_order, pants_order]
-                # if online_payment:
-                if online_payment:
-                    if order_id: the_order = Order.objects.get(order_id = order_id, waiting = True)
-                    the_order.transaction_id = transaction_id; the_order.date = trans_date; the_order.waiting = False; the_order.payment_mode = online_payment;# the_order.invoice = invoice
-                    the_order.save()
-                elif online_payment == False:
-                    customer_params = data.get("client", '{}')
-                    new_client = Client.objects.create(
-                        first_name = customer_params['FirstName'],
-                        last_name = customer_params['LastName'],
-                        email = customer_params['Email'],
-                        phone = str(customer_params['Phone']),
-                        city = customer_params['City'],
-                        address = customer_params['Address'])
-                    the_order = Order(
-                        transaction_id = transaction_id,
-                        date = trans_date,
-                        payment_mode = online_payment,
-                        client = new_client,
-                        amount = customer_params['Amount'],
-                        waiting = False,
-                        currency = customer_params['Currency'],
-                        #invoice = invoice
+                    detail_obj.save()
+
+                    # Enregistrement du produit commandé
+                    ProductOrdered.objects.create(
+                        client=order.client,
+                        order=order,
+                        product_type=product_obj.productType,
+                        size=item['size'],
+                        quantity=requested_qty,
+                        category=product_obj.category,
+                        ref=product_obj.ref,
+                        name=product_obj.name,
+                        product_id=product_obj.id,
+                        price=product_obj.price,
+                        available=available,
+                        exception_id = exception_id
                     )
-                # Parcourez toutes les commandes
-                for item in orders:
-                    if len(item['data']) > 0:
-                        for p in item['data']:
-                            # Obtenez le produit selon le modèle et les détails associés
-                            prod = item['modelDetail'].objects.get(productId=p['id'], size=p['size'])
-                            prod1 = item['model'].objects.get(id=p['id'])
-                            
-                            # Si le produit est trouvé, mettez à jour la quantité et sauvegardez
 
-                            if prod.quantity >= p['quantity']:
-                                    prod.quantity -= p['quantity']
-                                    prod.save();the_order.save()
-                            else :
-                                    delta = p['quantity'] - prod.quantity
-                                    prod.quantity=0;prod.save()
-                                    the_order.exception = True;the_order.save()
-                                    new_exception = QuantityExceptions(client = the_order.client,
-                                                                       order=the_order,
-                                                                       product_type = prod1.productType,
-                                                                       product_category = prod1.category,
-                                                                       product_ref = prod1.ref,
-                                                                       product_name=prod1.name,
-                                                                       product_size=p['size'],
-                                                                       delta_quantity = delta)
-                                    new_exception.save()
-                                # Ajoutez les informations du produit commandé à la réponse
-                            the_order.save()
-                            ordered_product[item['productType']].append({
-                                    "productType": prod1.productType,
-                                    "size": p['size'],
-                                    "quantity": p['quantity'],
-                                    "category": prod1.category,
-                                    "ref": prod1.ref,
-                                    "name": prod1.name,
-                                    "id": prod1.id,
-                                    "image":prod1.image.url,
-                                    "promo":prod1.promo,
-                                    "price":prod1.price})
-                if the_order:
-                    for key in ordered_product.keys():
-                        for p in ordered_product[key]:
-                            the_order_products = ProductOrdered(
-                                client = the_order.client,
-                                order = the_order,
-                                product_type = p["productType"],
-                                size = p["size"],
-                                quantity = p["quantity"],
-                                category = p["category"],
-                                ref = p["ref"],
-                                name = p["name"],
-                                product_id = p["id"],
-                                price = p["price"]
-                            )
-                            the_order_products.save()
-                    
-                            
-                    payment_res = {
-                        "order_id": str(the_order.order_id),
-                        "amount": the_order.amount,
-                        "currency": the_order.currency
-                    }
-                
-                return JsonResponse({'ordered_products': ordered_product, "paymentResponse":payment_res}, status=200)
+                    ordered_products[product_type].append({
+                        "productType": product_obj.productType,
+                        "size": item['size'],
+                        "quantity": requested_qty,
+                        "category": product_obj.category,
+                        "ref": product_obj.ref,
+                        "name": product_obj.name,
+                        "id": product_obj.id,
+                        "image": product_obj.image.url if product_obj.image else '',
+                        "promo": product_obj.promo,
+                        "price": product_obj.price,
+                        "available": available,
+                        "exception_id": exception_id if order.exception else None
+                    })
+
+                except model_detail.DoesNotExist:
+                    continue  # ou enregistrer comme erreur produit inexistant
+
+        order.save()
+
+        return JsonResponse({
+            'ordered_products': ordered_products,
+            'paymentResponse': {
+                'order_id': str(order.order_id),
+                'amount': order.amount,
+                'currency': order.currency
+            }
+        }, status=200)
 
     except Exception as e:
         return JsonResponse({'message': f'An error occurred: {str(e)}'}, status=400)
+
                     
 @api_view(['POST'])
 @permission_classes([AllowAny])

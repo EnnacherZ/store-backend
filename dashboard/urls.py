@@ -27,6 +27,7 @@ urlpatterns = [
     path('pants/manager/<int:pk>/', PantManager.as_view()),
     path('shoesDetails', ShoeDetailViewSet.as_view()),
     path('orders/manager/<int:pk>/', OrderManager.as_view()),
+    path('deficiencies/manager/<int:pk>/', QuantityExceptionsManager.as_view()),
     path('orders/getOrders', get_orders),
     path("updateShoeDetails", updateShoeDetail),
     path("updateSandalDetails", updateSandalDetail),
@@ -37,7 +38,9 @@ urlpatterns = [
     path('products/parameters', add_product_parameters),
     path('productsChoices', get_products_choices),
     path('getProductDetails', get_product_details),
-    path('products/getCategories',get_params),
+    path('products/getParameters',get_params),
     path('products/setTypes',add_product_types),
     path('products/getTypes',get_products_types),
+    path('orders/getSearchedOrder', get_searched_order),
+    path('deficiencies/processDeficiency', process_deficiency),
 ]

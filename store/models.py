@@ -41,7 +41,7 @@ def get_choices(type_, label):
 
 
 class Product(models.Model):
-    ref = models.PositiveIntegerField()
+    ref = models.CharField(max_length=100)
     name = models.CharField(max_length=100)
     price = models.FloatField(validators=[MinValueValidator(0.0)])
     newest = models.BooleanField(default=False) 
@@ -160,16 +160,20 @@ class ProductOrdered(models.Model):
     ref = models.CharField(max_length=50)
     name = models.CharField(max_length=50)
     price = models.FloatField(validators=[MinValueValidator(0)])
+    available = models.BooleanField(default=True)
+    exception_id = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
     def __str__(self):
         return "%s %s %s %s"%(self.client, self.product_type,self.category, self.name)
 
 class QuantityExceptions(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE)
     order = models.ForeignKey(Order, to_field='order_id', on_delete=models.CASCADE)
+    exception_id = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
     product_type = models.CharField(max_length=20)
     product_category = models.CharField(max_length=50)
     product_ref = models.PositiveIntegerField()
     product_name = models.CharField(max_length=50)
     product_size = models.CharField(max_length=50)
     delta_quantity = models.PositiveIntegerField()
+    treated = models.BooleanField(default=False)
 

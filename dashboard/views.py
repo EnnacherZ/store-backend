@@ -103,7 +103,13 @@ class OrderManager(generics.RetrieveUpdateDestroyAPIView):
     queryset = Order.objects.all()
     serializer_class = OrderSerializer
     permission_classes = [permission()]
-    parser_classes = (MultiPartParser, FormParser)   
+    parser_classes = (MultiPartParser, FormParser)  
+
+class QuantityExceptionsManager(generics.RetrieveUpdateDestroyAPIView):
+    queryset = QuantityExceptions.objects.all()
+    serializer_class = QuantityExceptionsSerializer
+    permission_classes = [permission()]
+    parser_classes = (MultiPartParser, FormParser) 
 
 
     # def partial_update(self, request, *args, **kwargs):
@@ -141,7 +147,7 @@ def db_get_orders(request):
 def get_deficiencies(request):
     if origin_checker(request):return HttpResponseForbidden(forbbiden_message)
     try:
-        queryset = QuantityExceptions.objects.all()
+        queryset = QuantityExceptions.objects.filter(treated = False)
         querySerializer = QuantityExceptionsSerializer(queryset, many = True)
         return JsonResponse({"deficiencies":querySerializer.data}, status = status.HTTP_200_OK)
     except Exception as e:
@@ -245,6 +251,21 @@ def updatePantDetail(request):
     
 
 
+@api_view(['POST'])
+@permission_classes([permission()])
+def process_deficiency(request):
+    data = json.loads(request.body)
+    exception_id = data.get('exceptionID')
+    order_id = data.get('orderID')
+    quantity_exception = QuantityExceptions.objects.get(exception_id = exception_id)
+    ordered_product = ProductOrdered.objects.get(exception_id = exception_id)
+    the_order = Order.objects.get(order_id = order_id)
+    quantity_exception.treated = True;ordered_product.available = True;the_order.exception = False
+    quantity_exception.save();ordered_product.save();the_order.save()
+    return JsonResponse({"message": 'ok'}, status = status.HTTP_200_OK)
+
+
+
 # Fichier parameters.json
 PARAMS_PATH = os.path.join(os.path.dirname(__file__), 'parameters.json')
 file_lock = Lock()
@@ -320,7 +341,7 @@ def add_product_types(request):
     
 
 @api_view(['GET'])
-@permission_classes([permission()])
+@permission_classes([AllowAny])
 def get_params(request):
     parameters = {}
     try:
@@ -382,3 +403,18 @@ def get_orders(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+
+@api_view(['GET'])
+@permission_classes([permission()])
+def get_searched_order(request):
+    try:
+        order_id = request.GET.get('orderID')
+        the_order = Order.objects.get(order_id = order_id)
+        serialized_order = OrderSerializer(the_order, many = False)
+        deficiencies = QuantityExceptions.objects.filter(order = order_id)
+        serialized_deficiencies = QuantityExceptionsSerializer(deficiencies, many = True)
+        return JsonResponse({'order': serialized_order.data, 'deficiencies': serialized_deficiencies.data, 'found': True, 'error':False}, status=status.HTTP_200_OK)
+    except Order.DoesNotExist:
+        return JsonResponse({'found': False, 'error':False})
+    except Exception as e:
+        return JsonResponse({'error':True})

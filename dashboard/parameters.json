@@ -6,14 +6,32 @@
     "Pant"
   ],
   "categories": {
-    "Sandal": [
+    "Shoe": [
       [
-        "Saw",
-        "Saw"
+        "Classic",
+        "Classic"
       ],
       [
-        "Bgbd",
-        "Bgbd"
+        "Basket",
+        "Basket"
+      ]
+    ],
+    "Sandal": [
+      [
+        "Classic",
+        "Classic"
+      ]
+    ],
+    "Shirt": [
+      [
+        "Décontracté",
+        "Décontracté"
+      ]
+    ],
+    "Pant": [
+      [
+        "Classic",
+        "Classic"
       ]
     ]
   }
