@@ -70,15 +70,15 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             key='access_token',
             value=str(access),
             httponly=True,
-            secure=secure,
-            samesite='Lax',
+            secure=True,
+            samesite='None',
             max_age=cookie_max_age
         )
         res.set_cookie(
             key='refresh_token',
             value=str(refresh),
             httponly=True,
-            secure=secure,
+            secure=True,
             samesite='None',
             max_age=cookie_max_age
         )
