@@ -13,8 +13,11 @@ router.register(r'pants', PantViewSet)
 
 urlpatterns = [
     path("user/register", CreateUserView.as_view()),
-    path('token', TokenObtainPairView.as_view()),
-    path('token/refresh', TokenRefreshView.as_view()),
+    path('token', CustomTokenObtainPairView.as_view()),
+    # path('token/refresh', TokenRefreshView.as_view()),
+    path('refresh-cookie', RefreshTokenCookieView.as_view()),
+    path('logout', LogoutView.as_view()),
+    path('check-auth/', CheckAuthView.as_view(), name='check-auth'),
     path('api-auth', include('rest_framework.urls')),
     path('shoes', ShoeViewSet.as_view()),
     path('sandals', SandalViewSet.as_view()),
@@ -43,4 +46,6 @@ urlpatterns = [
     path('products/getTypes',get_products_types),
     path('orders/getSearchedOrder', get_searched_order),
     path('deficiencies/processDeficiency', process_deficiency),
+    path('mandeliveryOrders', delivery_man_orders),
+    path('orders/confirmDelivery/<int:pk>/', confirm_delivery)
 ]

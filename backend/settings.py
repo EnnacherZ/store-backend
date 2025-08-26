@@ -10,6 +10,8 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+AUTH_USER_MODEL = 'dashboard.AuthUser'
+
 from pathlib import Path
 from datetime import timedelta
 import os
@@ -17,6 +19,8 @@ from dotenv import load_dotenv
 import cloudinary
 
 load_dotenv()
+
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -33,8 +37,11 @@ DEBUG = os.environ.get('IS_DEBUG')
 
 ALLOWED_HOSTS = [os.environ.get('ALLOWED_HOSTS')]
 CORS_ALLOWED_ORIGINS = [os.environ.get('CORS_ALLOWED_ORIGINS')]
+CORS_ALLOW_CREDENTIALS = True
+
 # SECURE_SSL_REDIRECT = os.environ.get(False)
 # Application definition
+
 
 INSTALLED_APPS = [
     'rest_framework',
@@ -50,6 +57,7 @@ INSTALLED_APPS = [
     'channels',
     'store',
     'dashboard',
+    'app'
     
 ]
 

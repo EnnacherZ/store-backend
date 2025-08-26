@@ -1,6 +1,5 @@
 from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
-from cloudinary.models import CloudinaryField
 import os, json, uuid
 from threading import Lock
 from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
@@ -46,11 +45,21 @@ class Product(models.Model):
     price = models.FloatField(validators=[MinValueValidator(0.0)])
     newest = models.BooleanField(default=False) 
     promo = models.FloatField(validators=[MinValueValidator(0.0), MaxValueValidator(100.0)], default=0)
-    image = CloudinaryField("Image", default = 'empty_q2cypk.png')
-    image1 = CloudinaryField("Image1", default = 'empty_q2cypk.png')
-    image2 = CloudinaryField("Image2", default = 'empty_q2cypk.png')
-    image3 = CloudinaryField("Image3", default = 'empty_q2cypk.png')
-    image4 = CloudinaryField("Image4", default = 'empty_q2cypk.png')
+    image = models.FileField(storage=MediaCloudinaryStorage(),
+                            upload_to='documents/products', 
+                            default='https://res.cloudinary.com/de2wpriie/image/upload/v1751978248/missing_image_gfidbm.jpg')
+    image1 = models.FileField(storage=MediaCloudinaryStorage(),
+                            upload_to='documents/products', 
+                            default='https://res.cloudinary.com/de2wpriie/image/upload/v1751978248/missing_image_gfidbm.jpg')
+    image2 = models.FileField(storage=MediaCloudinaryStorage(),
+                            upload_to='documents/products', 
+                            default='https://res.cloudinary.com/de2wpriie/image/upload/v1751978248/missing_image_gfidbm.jpg')
+    image3 = models.FileField(storage=MediaCloudinaryStorage(),
+                            upload_to='documents/products', 
+                            default='https://res.cloudinary.com/de2wpriie/image/upload/v1751978248/missing_image_gfidbm.jpg')
+    image4 = models.FileField(storage=MediaCloudinaryStorage(),
+                            upload_to='documents/products', 
+                            default='https://res.cloudinary.com/de2wpriie/image/upload/v1751978248/missing_image_gfidbm.jpg')
     class Meta:
         abstract = True
 
@@ -146,6 +155,8 @@ class Order(models.Model):
     currency = models.CharField(max_length=100, default='MAD')
     invoice = models.FileField(storage=RawMediaCloudinaryStorage(), upload_to='documents/invoices', null=True, blank=True)
     delivery_form = models.FileField(storage=RawMediaCloudinaryStorage(), upload_to='documents/delivery_forms', null=True, blank=True)
+    delivered = models.BooleanField(default=False)
+    delivery_man = models.CharField(max_length=100, null=True, default=None)
     def __str__(self):
         return "%s "%(self.order_id)
 

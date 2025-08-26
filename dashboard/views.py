@@ -1,18 +1,26 @@
-from django.contrib.auth.models import User
-from rest_framework import generics, viewsets
+from django.contrib.auth import get_user_model
+from .permissions import IsAdmin, IsDeliveryMan, IsManager
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.views import APIView
+from rest_framework import generics
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.decorators import api_view, permission_classes
 from dotenv import load_dotenv
 from rest_framework import status
+from rest_framework.response import Response
 from django.http import JsonResponse, HttpResponseForbidden
 from .serializers import *
 from store.models import *
 from store.serializers import *
 import os, json
 from threading import Lock
-from cloudinary.uploader import upload
+from django.conf import settings
+
 # Create your views here.
+
+User = get_user_model()
 
 load_dotenv()
 allowed_origins = os.environ.get('REQUEST_ALLOWED_ORIGINS')
@@ -32,10 +40,102 @@ productSerializer_types = {"Shoe":ShoeSerializer, "Sandal":SandalSerializer, "Sh
 productDetailSerializer_types = {"Shoe":ShoeDetailSerializer, "Sandal":SandalDetailSerializer, "Shirt":ShirtDetailSerializer, "Pant":PantDetailSerializer}
 
 
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        tokens = serializer.validated_data
+
+        refresh = tokens['refresh']
+        access = tokens['access']
+
+        res = Response({
+            "message": "Login successful",
+            "user": {
+                "username": serializer.user.username,
+                "role": serializer.user.role,
+                "first_name": serializer.user.first_name,
+                "last_name": serializer.user.last_name,
+                "image": serializer.user.image.url if serializer.user.image else None
+            }
+        }, status=status.HTTP_200_OK)
+
+        cookie_max_age = 3600 * 24  # 1 day
+        secure = not settings.DEBUG
+
+        res.set_cookie(
+            key='access_token',
+            value=str(access),
+            httponly=True,
+            secure=secure,
+            samesite='Lax',
+            max_age=cookie_max_age
+        )
+        res.set_cookie(
+            key='refresh_token',
+            value=str(refresh),
+            httponly=True,
+            secure=secure,
+            samesite='None',
+            max_age=cookie_max_age
+        )
+
+        return res
+
+
+class RefreshTokenCookieView(APIView):
+    def post(self, request):
+        refresh_token = request.COOKIES.get('refresh_token')
+
+        if not refresh_token:
+            return Response({'detail': 'Refresh token missing'}, status=400)
+
+        try:
+            token = RefreshToken(refresh_token)
+            access_token = str(token.access_token)
+            res = Response({'message': 'Token refreshed'})
+            res.set_cookie(
+                'access_token',
+                access_token,
+                httponly=True,
+                secure=True,
+                samesite='None',
+                max_age=3600
+            )
+            return res
+        except Exception:
+            return Response({'detail': 'Invalid token'}, status=401)
+
+
+class LogoutView(APIView):
+    def post(self, request):
+        res = Response({'message': 'Logged out'})
+        res.delete_cookie('access_token')
+        res.delete_cookie('refresh_token')
+        return res
+    
+class CheckAuthView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({
+            'message': 'Authenticated',
+            'user': {
+                'username': request.user.username,
+                'email': request.user.email,
+                'first_name': request.user.first_name,
+                'last_name': request.user.last_name,
+            }
+        }, status=200)
+
+
 class CreateUserView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [permission()]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
 class ShoeViewSet(generics.ListCreateAPIView):
     queryset = Shoe.objects.all()
@@ -393,13 +493,15 @@ def get_product_details(request):
 @permission_classes([permission()])
 def get_orders(request):
     try:
-        all_orders = Order.objects.all().order_by('-exception')
-        remaining_orders = Order.objects.filter(status = False).order_by('-exception')
-        delivered_orders = Order.objects.filter(status=True).order_by('-exception')
+        all_orders = Order.objects.filter(waiting  = False).order_by('-exception')
+        remaining_orders = Order.objects.filter(status = False, waiting=False).order_by('-exception')
+        waitin_delivery_orders = Order.objects.filter(status = True, waiting=False, delivered= False).order_by('-exception')
+        delivered_orders = Order.objects.filter(status=True, waiting=False, delivered= True).order_by('-exception')
         all_serialized = OrderSerializer(all_orders, many=True).data
         remaining_serialized = OrderSerializer(remaining_orders, many=True).data
         delivered_serialized = OrderSerializer(delivered_orders, many=True).data
-        return JsonResponse({"allOrders":all_serialized, "remainingOrders":remaining_serialized, "deliveredOrders":delivered_serialized}, status= status.HTTP_200_OK)
+        waiting_delivery_serialized = OrderSerializer(waitin_delivery_orders, many=True).data
+        return JsonResponse({"allOrders":all_serialized, "remainingOrders":remaining_serialized, "deliveredOrders":delivered_serialized, 'waitingDeliveryOrders':waiting_delivery_serialized}, status= status.HTTP_200_OK)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
@@ -418,3 +520,30 @@ def get_searched_order(request):
         return JsonResponse({'found': False, 'error':False})
     except Exception as e:
         return JsonResponse({'error':True})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsDeliveryMan])
+def delivery_man_orders(request):
+    try:
+        waiting_queryset = Order.objects.filter(status = True, waiting = False, delivered = False)
+        delivered_queryset = Order.objects.filter(status = True, waiting = False, delivered = True)
+        waiting_querySerializer = OrderSerializer(waiting_queryset, many=True)
+        delivered_querySerializer = OrderSerializer(delivered_queryset, many=True)
+        return JsonResponse({"orders":waiting_querySerializer.data}, status = status.HTTP_200_OK)
+    except Exception as e:
+        print(e)
+        return JsonResponse({"message" : f"An error occured: {str(e)}"}, status = status.HTTP_400_BAD_REQUEST)  
+    
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated, IsDeliveryMan])
+def confirm_delivery(request, pk):
+    username = request.data.get('username')
+    try:
+        order = Order.objects.get(pk=pk)
+        order.delivery_man = username; order.delivered = True
+        order.save()
+        return JsonResponse({'message':'delivered!'})
+    except Exception as e:
+        return JsonResponse({"message" : f"An error occured: {str(e)}"})  
