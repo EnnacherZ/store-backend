@@ -70,17 +70,21 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             key='access_token',
             value=str(access),
             httponly=True,
-            secure=True,
+            secure=secure,
             samesite='None',
-            max_age=cookie_max_age
+            max_age=cookie_max_age,
+            domain= os.environ.get('domain')
+            
         )
         res.set_cookie(
             key='refresh_token',
             value=str(refresh),
             httponly=True,
-            secure=True,
+            secure= secure,
             samesite='None',
-            max_age=cookie_max_age
+            max_age=cookie_max_age,
+            domain= os.environ.get('domain')
+            
         )
 
         return res
@@ -92,7 +96,7 @@ class RefreshTokenCookieView(APIView):
 
         if not refresh_token:
             return Response({'detail': 'Refresh token missing'}, status=400)
-
+        secure = not settings.DEBUG
         try:
             token = RefreshToken(refresh_token)
             access_token = str(token.access_token)
@@ -101,9 +105,11 @@ class RefreshTokenCookieView(APIView):
                 'access_token',
                 access_token,
                 httponly=True,
-                secure=True,
+                secure= secure ,
                 samesite='None',
-                max_age=3600
+                max_age=3600,
+                domain= os.environ.get('domain')
+                
             )
             return res
         except Exception:
