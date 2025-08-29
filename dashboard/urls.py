@@ -10,12 +10,11 @@ router.register(r'shirts', ShirtViewSet)
 router.register(r'pants', PantViewSet)
 
 
-
 urlpatterns = [
     path("user/register", CreateUserView.as_view()),
     path('token', CustomTokenObtainPairView.as_view()),
     # path('token/refresh', TokenRefreshView.as_view()),
-    path('refresh-cookie', RefreshTokenCookieView.as_view()),
+    # path('refreshcookie', RefreshTokenCookieView),
     path('logout', LogoutView.as_view()),
     path('check-auth/', CheckAuthView.as_view(), name='check-auth'),
     path('api-auth', include('rest_framework.urls')),

@@ -36,7 +36,7 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 DEBUG = os.environ.get('IS_DEBUG')
 
 
-# SECURE_SSL_REDIRECT = os.environ.get(False)
+SECURE_SSL_REDIRECT = True
 # Application definition
 
 
@@ -54,7 +54,8 @@ INSTALLED_APPS = [
     'channels',
     'store',
     'dashboard',
-    'app'
+    'app',
+    'django_extensions'
     
 ]
 
@@ -175,7 +176,8 @@ DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'dashboard.authentication.CookieJWTAuthentication',
+        #'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     # Tu peux également configurer d'autres options ici
     'DEFAULT_PERMISSION_CLASSES': [
@@ -184,14 +186,14 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),  # Example: Access token valid for 5 minutes
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),  # Example: Access token valid for 5 minutes
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),   # Example: Refresh token valid for 1 day
     'ROTATE_REFRESH_TOKENS': True,                 # Recommended for security
     'BLACKLIST_AFTER_ROTATION': True,              # Recommended for security
     'AUTH_COOKIE': 'access_token',                 # Name of the cookie storing the access token
     'AUTH_COOKIE_SECURE': not DEBUG,                    # True in production (HTTPS only)
     'AUTH_COOKIE_HTTP_ONLY': True,                 # Prevents client-side JS access
-    'AUTH_COOKIE_SAMESITE': 'Lax',                 # Or 'Strict' for stricter CSRF protection
+    'AUTH_COOKIE_SAMESITE': 'None',                 # Or 'Strict' for stricter CSRF protection
     'AUTH_COOKIE_REFRESH': 'refresh_token',        # Name of the cookie storing the refresh token
 }
 
@@ -202,6 +204,7 @@ CORS_ALLOWED_ORIGINS = [os.environ.get('CORS_ALLOWED_ORIGINS')]
 
 
 CSRF_COOKIE_NAME = "csrftoken"
-CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = True
 CORS_ALLOW_CREDENTIALS = True
 CSRF_COOKIE_HTTPONLY = False
+CSRF_TRUSTED_ORIGINS = [os.environ.get('CORS_ALLOWED_ORIGINS')]

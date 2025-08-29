@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from .permissions import IsAdmin, IsDeliveryMan, IsManager
 from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from rest_framework.views import APIView
 from rest_framework import generics
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -17,6 +17,46 @@ from store.serializers import *
 import os, json
 from threading import Lock
 from django.conf import settings
+
+
+import traceback
+
+class RefreshTokenCookieVieww(APIView):
+    permission_classes = [AllowAny]  # 👈 THIS IS CRITICAL
+
+    def post(self, request):
+        try:
+            refresh_token = request.COOKIES.get('refresh_token')
+            print("Refresh Token:", refresh_token)
+
+            if not refresh_token:
+                return Response({'detail': 'Refresh token missing'}, status=400)
+
+            token = RefreshToken(refresh_token)
+            access_token = str(token.access_token)
+
+            response = Response({'message': 'Token refreshed'})
+            response.set_cookie(
+                key='access_token',
+                value=access_token,
+                httponly=True,
+                secure=True,
+                samesite='None',
+                max_age=300,
+                domain='localhost'
+            )
+            return response
+
+        except TokenError as e:
+            print("❌ Token error:", str(e))
+            traceback.print_exc()
+            return Response({'detail': 'Invalid refresh token'}, status=401)
+
+        except Exception as e:
+            print("❌ Unexpected error:", str(e))
+            traceback.print_exc()
+            return Response({'detail': 'Server error'}, status=500)
+
 
 # Create your views here.
 
@@ -70,50 +110,26 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             key='access_token',
             value=str(access),
             httponly=True,
-            secure=secure,
+            secure=True,
             samesite='None',
             max_age=cookie_max_age,
-            domain= os.environ.get('domain')
+            # domain= 'localhost'
             
         )
         res.set_cookie(
             key='refresh_token',
             value=str(refresh),
             httponly=True,
-            secure= secure,
+            secure= True,
             samesite='None',
             max_age=cookie_max_age,
-            domain= os.environ.get('domain')
+            # domain= 'localhost'
             
         )
 
         return res
 
 
-class RefreshTokenCookieView(APIView):
-    def post(self, request):
-        refresh_token = request.COOKIES.get('refresh_token')
-
-        if not refresh_token:
-            return Response({'detail': 'Refresh token missing'}, status=400)
-        secure = not settings.DEBUG
-        try:
-            token = RefreshToken(refresh_token)
-            access_token = str(token.access_token)
-            res = Response({'message': 'Token refreshed'})
-            res.set_cookie(
-                'access_token',
-                access_token,
-                httponly=True,
-                secure= secure ,
-                samesite='None',
-                max_age=3600,
-                domain= os.environ.get('domain')
-                
-            )
-            return res
-        except Exception:
-            return Response({'detail': 'Invalid token'}, status=401)
 
 
 class LogoutView(APIView):
