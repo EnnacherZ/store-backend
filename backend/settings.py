@@ -55,7 +55,6 @@ INSTALLED_APPS = [
     'store',
     'dashboard',
     'app',
-    'django_extensions'
     
 ]
 
