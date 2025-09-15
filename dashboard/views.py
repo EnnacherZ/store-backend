@@ -130,6 +130,9 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         return res
 
 
+class CustomAppTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
 
 
 class LogoutView(APIView):

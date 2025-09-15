@@ -51,10 +51,12 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'cloudinary',
     'cloudinary_storage',
+    'django_extensions',
     'channels',
     'store',
     'dashboard',
     'app',
+    
     
 ]
 
@@ -176,7 +178,7 @@ DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'dashboard.authentication.CookieJWTAuthentication',
-        #'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     # Tu peux également configurer d'autres options ici
     'DEFAULT_PERMISSION_CLASSES': [
@@ -190,7 +192,7 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,                 # Recommended for security
     'BLACKLIST_AFTER_ROTATION': True,              # Recommended for security
     'AUTH_COOKIE': 'access_token',                 # Name of the cookie storing the access token
-    'AUTH_COOKIE_SECURE': not DEBUG,                    # True in production (HTTPS only)
+    'AUTH_COOKIE_SECURE': True,                    # True in production (HTTPS only)
     'AUTH_COOKIE_HTTP_ONLY': True,                 # Prevents client-side JS access
     'AUTH_COOKIE_SAMESITE': 'None',                 # Or 'Strict' for stricter CSRF protection
     'AUTH_COOKIE_REFRESH': 'refresh_token',        # Name of the cookie storing the refresh token
