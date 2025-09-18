@@ -51,7 +51,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'cloudinary',
     'cloudinary_storage',
-    'django_extensions',
+    #'django_extensions',
     'channels',
     'store',
     'dashboard',
