@@ -88,7 +88,7 @@ class ProductDetailC(models.Model):
 
 class Shoe(Product):
     productType = models.CharField(default='Shoe', max_length=20, editable=False)
-    category = models.CharField(max_length=100, choices=get_choices("Shoe", "categories"))
+    category = models.CharField(max_length=100)
     def __str__(self):
         return "%s %s %s"%(self.category, self.ref, self.name)
 

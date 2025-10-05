@@ -53,7 +53,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'cloudinary',
     'cloudinary_storage',
-    #'django_extensions',
+    'django_extensions',
     'channels',
     'store',
     'dashboard',
@@ -176,7 +176,8 @@ cloudinary.config(
     api_key = os.environ.get('cloudinary_api_key'), 
     api_secret = os.environ.get('cloudinary_api_secret'), # Click 'View API Keys' above to copy your API secret
     secure=True,
-    access_mode = 'public'
+    access_mode = 'public',
+    
 )
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
