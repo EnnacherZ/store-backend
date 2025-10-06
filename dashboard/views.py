@@ -138,8 +138,18 @@ class CustomAppTokenObtainPairView(TokenObtainPairView):
 class LogoutView(APIView):
     def post(self, request):
         res = Response({'message': 'Logged out'})
-        res.delete_cookie('access_token')
-        res.delete_cookie('refresh_token')
+        res.delete_cookie(
+            key='access_token',
+            httponly=True,
+            secure=True,
+            samesite='None',
+        )
+        res.delete_cookie(
+            key='refresh_token',
+            httponly=True,
+            secure= True,
+            samesite='None'
+        )
         return res
     
 class CheckAuthView(APIView):
