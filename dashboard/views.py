@@ -248,6 +248,7 @@ class QuantityExceptionsManager(generics.RetrieveUpdateDestroyAPIView):
     parser_classes = (MultiPartParser, FormParser) 
 
 
+
     # def partial_update(self, request, *args, **kwargs):
     #     instance = self.get_object()
 
