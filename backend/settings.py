@@ -160,8 +160,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 #Media configuartion 
 #Media cloud settings
 
-# MEDIA_URL = '/media/'
-# MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 CLOUDINARY_STORAGE = {
     'CLOUD_NAME': os.environ.get("cloudinary_cloud_name"),
     'API_KEY': os.environ.get("cloudinary_api_key"),
