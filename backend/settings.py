@@ -53,7 +53,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'cloudinary',
     'cloudinary_storage',
-    #'django_extensions',
+    'django_extensions',
     'channels',
     'store',
     'dashboard',
@@ -109,6 +109,13 @@ DATABASES = {
         ssl_require=True  # surtout pour Neon ou Render
     )
 }
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',  # le fichier sera créé à la racine du projet
+#     }
+# }
 
 
 # Password validation

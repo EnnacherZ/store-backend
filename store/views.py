@@ -299,13 +299,19 @@ def get_searched_product(request):
             ref = request.GET.get('ref',None)
             pid = int(request.GET.get('id',None))
             data_dict = models_dict[prod]
-            searched_product = data_dict[0].objects.filter(category=cat, ref=ref, id=pid)
-            serialized = data_dict[1](searched_product, many=True)
+            searched_product = data_dict[0].objects.get(category=cat, ref=ref, id=pid)
+            searched_product_details = data_dict[2].objects.filter(productId=searched_product.id)
+            serialized = data_dict[1](searched_product)
+            serialized_details = data_dict[3](searched_product_details, many=True)
             product_reviews = ProductReviews.objects.filter(product_id = pid, product_type = prod).order_by('-stars')
             serialized_reviews = ProductReviewsSerializer(product_reviews, many=True)
             products = models_dict[prod][0].objects.filter(newest=True)
             serialized_products = models_dict[prod][1](products, many=True)
-            return JsonResponse({"product":serialized.data, "products":serialized_products.data, 'reviews':serialized_reviews.data}, status=status.HTTP_200_OK)
+            return JsonResponse({"product":serialized.data,
+                                 "product_details":serialized_details.data,
+                                  "products":serialized_products.data, 
+                                  'reviews':serialized_reviews.data}, 
+                                  status=status.HTTP_200_OK)
         except Exception as e:
             return JsonResponse({'message': f'error occured : {str(e)}'})   
 
