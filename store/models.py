@@ -47,19 +47,19 @@ class Product(models.Model):
     promo = models.FloatField(validators=[MinValueValidator(0.0), MaxValueValidator(100.0)], default=0)
     image = models.FileField(storage=MediaCloudinaryStorage(),
                             upload_to='documents/products', 
-                            default='https://res.cloudinary.com/de2wpriie/image/upload/v1751978248/missing_image_gfidbm.jpg')
+                            default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
     image1 = models.FileField(storage=MediaCloudinaryStorage(),
                             upload_to='documents/products', 
-                            default='https://res.cloudinary.com/de2wpriie/image/upload/v1751978248/missing_image_gfidbm.jpg')
+                            default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
     image2 = models.FileField(storage=MediaCloudinaryStorage(),
                             upload_to='documents/products', 
-                            default='https://res.cloudinary.com/de2wpriie/image/upload/v1751978248/missing_image_gfidbm.jpg')
+                            default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
     image3 = models.FileField(storage=MediaCloudinaryStorage(),
                             upload_to='documents/products', 
-                            default='https://res.cloudinary.com/de2wpriie/image/upload/v1751978248/missing_image_gfidbm.jpg')
+                            default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
     image4 = models.FileField(storage=MediaCloudinaryStorage(),
                             upload_to='documents/products', 
-                            default='https://res.cloudinary.com/de2wpriie/image/upload/v1751978248/missing_image_gfidbm.jpg')
+                            default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
     class Meta:
         abstract = True
 
