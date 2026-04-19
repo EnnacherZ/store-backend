@@ -3,6 +3,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 import os, json, uuid
 from threading import Lock
 from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
+from django.contrib.auth.hashers import make_password, check_password
 # Create your models here.
 
 base_dir = os.path.dirname(os.path.dirname(__file__))
@@ -16,21 +17,6 @@ def load_params():
     with file_lock, open(PARAMS_PATH, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-shoe_choices= [
-    ('Mocassin', 'Mocassin'),
-    ('Basket', 'Basket'),
-    ('Medical', 'Medical'),
-    ('Classic', 'Classic'),
-]
-sandal_choices=[]
-shirt_choices=[]
-pant_choices=[]
-choices = {
-    'Shoe':shoe_choices,
-    'Sandal':sandal_choices,
-    'Shirt':shirt_choices,
-    'Pant':pant_choices
-}
 
 def get_choices(type_, label):
     params = load_params()
@@ -40,6 +26,8 @@ def get_choices(type_, label):
 
 
 class Product(models.Model):
+    product_type = models.CharField(max_length=100)
+    category = models.CharField(max_length=100)
     ref = models.CharField(max_length=100)
     name = models.CharField(max_length=100)
     price = models.FloatField(validators=[MinValueValidator(0.0)])
@@ -60,75 +48,30 @@ class Product(models.Model):
     image4 = models.FileField(storage=MediaCloudinaryStorage(),
                             upload_to='documents/products', 
                             default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
-    class Meta:
-        abstract = True
+    # class Meta:
+    #     abstract = True
+    def __str__(self):
+        return "%s %s %s"%(self.category, self.ref, self.name)
 
-class ProductDetailN(models.Model):
-    size = models.PositiveIntegerField()
+class ProductStock(models.Model):
+    product = models.ForeignKey(Product, related_name="stock", on_delete=models.CASCADE)
+    size = models.CharField(max_length=100)
     quantity = models.PositiveIntegerField()
-    class Meta:
-        abstract = True
+    # class Meta:
+    #     abstract = True
+    def __str__(self):
+        return "%s %s %s"%(self.product, "size : " + str(self.size) , "quantity : "+str(self.quantity))
 
-class ProductReviews(models.Model):
-    product_type=models.CharField(max_length=10)
-    product_id = models.IntegerField()
+
+
+class ProductReview(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='reviews')
     name = models.CharField(max_length=50)
     email = models.EmailField()
     review = models.CharField(max_length=150)
     stars = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)])
     date = models.DateTimeField()
 
-
-class ProductDetailC(models.Model):
-    size = models.CharField(max_length=10)
-    quantity = models.PositiveIntegerField()
-    class Meta:
-        abstract = True
-
-
-class Shoe(Product):
-    productType = models.CharField(default='Shoe', max_length=20, editable=False)
-    category = models.CharField(max_length=100)
-    def __str__(self):
-        return "%s %s %s"%(self.category, self.ref, self.name)
-
-class ShoeDetail(ProductDetailN):
-    productId = models.ForeignKey(Shoe,on_delete=models.CASCADE)
-    def __str__(self):
-        return "%s %s %s"%(self.productId, "size : " + str(self.size) , "quantity : "+str(self.quantity))
-
-class Sandal(Product):
-    productType = models.CharField(default='Sandal', max_length=20, editable=False)
-    category = models.CharField(max_length=100)
-    def __str__(self):
-        return "%s %s %s"%(self.category, self.ref, self.name)
-
-class SandalDetail(ProductDetailN):
-    productId = models.ForeignKey(Sandal, on_delete=models.CASCADE)
-    def __str__(self):
-        return "%s %s %s"%(self.productId, self.size, self.quantity)
-    
-class Shirt(Product):
-    productType = models.CharField(default='Shirt', max_length=20, editable=False)
-    category = models.CharField(max_length=100)
-    def __str__(self):
-        return "%s %s %s"%(self.category, self.ref, self.name)
-    
-class ShirtDetail(ProductDetailC):
-    productId = models.ForeignKey(Shirt, on_delete=models.CASCADE)
-    def __str__(self):
-        return "%s %s %s"%(self.productId, self.size, self.quantity)
-
-class  Pant(Product):
-    productType = models.CharField(default='Pant', max_length=20, editable=False)
-    category = models.CharField(max_length=100)
-    def __str__(self):
-        return "%s %s %s"%(self.category, self.ref, self.name)
-    
-class PantDetail(ProductDetailC):
-    productId = models.ForeignKey(Pant, on_delete=models.CASCADE)
-    def __str__(self):
-        return "%s %s %s"%(self.productId, self.size, self.quantity)
 
 class Client(models.Model):
     first_name = models.CharField(max_length=100)
@@ -188,3 +131,25 @@ class QuantityExceptions(models.Model):
     delta_quantity = models.PositiveIntegerField()
     treated = models.BooleanField(default=False)
 
+
+
+class LoyalClient(models.Model):
+    email = models.EmailField(unique=True)
+    password = models.CharField(max_length=255)
+    last_name = models.CharField(max_length=255)
+    first_name = models.CharField(max_length=255)
+    address = models.TextField()
+    phone = models.CharField(max_length=20, null=True, blank=True)
+    creation_date = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=False)  # Pour vérifier si le client est activé
+    activation_date = models.DateTimeField(null=True, blank=True)
+    activation_code = models.UUIDField(default = uuid.uuid4, unique=True)
+
+    def set_password(self, password):
+        self.password = make_password(password)
+
+    def check_password(self, password):
+        return check_password(password, self.password)
+
+    def __str__(self):
+        return f'{self.first_name} {self.last_name}'

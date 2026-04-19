@@ -3,7 +3,8 @@
     "Shoe",
     "Sandal",
     "Shirt",
-    "Pant"
+    "Pant",
+    "Underwear"
   ],
   "categories": {
     "Shoe": [
@@ -33,6 +34,7 @@
         "Classic",
         "Classic"
       ]
-    ]
+    ],
+    "Underwear": []
   }
 }

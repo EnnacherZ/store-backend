@@ -19,31 +19,21 @@ from django.urls import path
 from store.views import *
 from store.models import *
 from store.serializers import *
+from store.loyalClient import ActivateClientView, SignUpClientView, SignInClientView
 
 
 urlpatterns = [
-    # path('events/shoes/', sse_shoes, name='sse_shoes'),
-    # path('events/sandals/', sse_sandals, name='sse_sandals'),
-    # path('events/shirts/', sse_shirts, name='sse_shirts'),
-    # path('events/pants/', sse_pants, name='sse_pants'),
-    # path('events/shoes_sizes/', sse_sizes_shoes, name='sse_shoes_sizes'),
-    # path('events/sandals_sizes/', sse_sizes_sandals, name='sse_sandals_sizes'),
-    # path('events/shirts_sizes/', sse_sizes_shirts, name='sse_shirts_sizes'),
-    # path('events/pants_sizes/', sse_sizes_pants, name='sse_pants_sizes'),
-    # path('api/getShoesNew/', sse_shoes_new),
-    # path('api/getSandalsNew/', sse_sandals_new),
-    # path('api/getShirtsNew/', sse_shirts_new),
-    path('api/getProducts', get_products),
-    path('api/handlepay/', handle_payment),
-    path('api/ip', get_ip, name='get_ip'),
-    path('api/getPaymentToken', getPaymentToken),
-    path('api/getAllProducts', get_newest_products),
-    path('api/getNewestShoe', get_newest_shoes),
-    path('api/getNewestSandal', get_newest_sandals),
-    path('api/getNewestShirt', get_newest_shirts),
-    path('api/getNewestPant', get_newest_pants),
-    path('api/getSearchedProd', get_searched_product),
-    path('api/addReview', add_review),
-    path('api/getReviews', get_reviews),
-    path('api/checkOrder', check_order)
+    path('ip', get_ip, name='get_ip'),
+    path('products/get/all', get_all_products),
+    path('products/get', get_products),
+    path('product/search/get', get_searched_product),
+    path('payment/handle/', handle_payment),
+    path('payment/token/get', getPaymentToken),
+    path('reviews/add/', add_review),
+    path('reviews/get', get_reviews),
+    path('orders/check', check_order),
+    path('client/signup', SignUpClientView.as_view()),
+    path('client/signin', SignInClientView.as_view()),
+    path('client/activate/<str:activation_code>/', ActivateClientView.as_view()),
+    path('send_mail/', envoyer_email)
 ]

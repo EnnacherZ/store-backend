@@ -17,7 +17,7 @@ from store.serializers import *
 import os, json
 from threading import Lock
 from django.conf import settings
-
+from django.db.models import F
 
 import traceback
 
@@ -74,10 +74,6 @@ def origin_checker(request):
 
 
 
-product_types = {"Shoe":Shoe, "Sandal":Sandal, "Shirt":Shirt, "Pant":Pant}
-productDetail_types = {"Shoe":ShoeDetail, "Sandal":SandalDetail, "Shirt":ShirtDetail, "Pant":PantDetail}
-productSerializer_types = {"Shoe":ShoeSerializer, "Sandal":SandalSerializer, "Shirt":ShirtSerializer, "Pant":PantSerializer}
-productDetailSerializer_types = {"Shoe":ShoeDetailSerializer, "Sandal":SandalDetailSerializer, "Shirt":ShirtDetailSerializer, "Pant":PantDetailSerializer}
 
 
 
@@ -173,59 +169,25 @@ class CreateUserView(generics.CreateAPIView):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
 
-class ShoeViewSet(generics.ListCreateAPIView):
-    queryset = Shoe.objects.all()
-    serializer_class = ShoeSerializer
+
+
+class ProductViewSet(generics.ListCreateAPIView):
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
     permission_classes = [permission()]
     parser_classes = (MultiPartParser, FormParser)
 
 
-class ShoeManager(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Shoe.objects.all()
-    serializer_class = ShoeSerializer
+class ProductManager(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
     permission_classes = [permission()]
     parser_classes = (MultiPartParser, FormParser)
 
 
-class SandalViewSet(generics.ListCreateAPIView):
-    queryset = Sandal.objects.all()
-    serializer_class = SandalSerializer
-    permission_classes = [permission()]
-    parser_classes = (MultiPartParser, FormParser)
-
-class SandalManager(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Sandal.objects.all()
-    serializer_class = SandalSerializer
-    permission_classes = [permission()]
-    parser_classes = (MultiPartParser, FormParser)
-
-class ShirtViewSet(generics.ListCreateAPIView):
-    queryset = Shirt.objects.all()
-    serializer_class = ShirtSerializer
-    permission_classes = [permission()]
-    parser_classes = (MultiPartParser, FormParser)
-
-class ShirtManager(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Shirt.objects.all()
-    serializer_class = ShirtSerializer
-    permission_classes = [permission()]
-    parser_classes = (MultiPartParser, FormParser)
-
-class PantViewSet(generics.ListCreateAPIView):
-    queryset = Pant.objects.all()
-    serializer_class = PantSerializer
-    permission_classes = [permission()]
-    parser_classes = (MultiPartParser, FormParser)
-
-class PantManager(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Pant.objects.all()
-    serializer_class = PantSerializer
-    permission_classes = [permission()]
-    parser_classes = (MultiPartParser, FormParser)
-
-class ShoeDetailViewSet(generics.ListCreateAPIView):
-    queryset = ShoeDetail.objects.all()
-    serializer_class = ShoeDetailSerializer
+class ProductStockViewSet(generics.ListCreateAPIView):
+    queryset = ProductStock.objects.all()
+    serializer_class = ProductStockSerializer
     permission_classes = [permission()]
     parser_classes = (MultiPartParser, FormParser)
 
@@ -294,98 +256,69 @@ def get_deficiencies(request):
 
 @api_view(['POST'])
 @permission_classes([permission()])
-def updateShoeDetail(request):
-    if origin_checker(request) : return HttpResponseForbidden(forbbiden_message)
+def updateProductStock(request):
+    if origin_checker(request):
+        return HttpResponseForbidden(forbbiden_message)
+
     try:
-        if request.method == 'POST':
-            data  = json.loads(request.body)
-            productId = int(data.get("productId", None))
-            size = data.get("size", None)
-            quantity = int(data.get('quantity'))
-            product = Shoe.objects.get(id = productId) 
-            productDetails = ShoeDetail.objects.filter(productId = product, size = size)
-            if productDetails.exists():
-                targeted_product = productDetails.first()
-                targeted_product.quantity += quantity
-                targeted_product.save()
-            else :
-                ShoeDetail.objects.create(productId = product, size = size, quantity = quantity)
-            return JsonResponse({"message":"Ok!"}, status=status.HTTP_201_CREATED)
+        data = request.data  # 🔥 DRF gère déjà le JSON
+
+        pid = data.get("productId")
+        product_type = data.get("product_type")
+        size = data.get("size")
+        quantity = data.get("quantity")
+
+        # ✅ validations
+        if not all([pid, product_type, size, quantity]):
+            return Response(
+                {"message": "Missing required fields"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            pid = int(pid)
+            quantity = int(quantity)
+        except ValueError:
+            return Response(
+                {"message": "Invalid id or quantity"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 🔹 récupérer le produit
+        product = Product.objects.get(
+            id=pid,
+            product_type=product_type
+        )
+
+        # 🔹 stock
+        product_stock, created = ProductStock.objects.get_or_create(
+            product=product,
+            size=size,
+            defaults={'quantity': quantity}
+        )
+
+        if not created:
+            product_stock.quantity = F("quantity") + quantity
+            product_stock.save()
+
+        return Response(
+            {"message": "Stock updated successfully"},
+            status=status.HTTP_200_OK
+        )
+
+    except Product.DoesNotExist:
+        return Response(
+            {"message": "Product not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
     except Exception as e:
         print(e)
-        return JsonResponse({"message" : f"An error occured: {str(e)}"}, status = status.HTTP_400_BAD_REQUEST) 
+        return Response(
+            {"message": f"An error occurred: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
-
-
-@api_view(['POST'])
-@permission_classes([permission()])
-def updateSandalDetail(request): 
-    if origin_checker(request) : return HttpResponseForbidden(forbbiden_message)
-    try:
-        if request.method == 'POST':
-            data  = json.loads(request.body)
-            productId = int(data.get("productId", None))
-            size = data.get("size", None)
-            quantity = int(data.get('quantity'))
-            product = Sandal.objects.get(id = productId) 
-            productDetails = SandalDetail.objects.filter(productId = product, size = size)
-            if productDetails.exists():
-                targeted_product = productDetails.first()
-                targeted_product.quantity += quantity
-                targeted_product.save()
-            else :
-                SandalDetail.objects.create(productId = product, size = size, quantity = quantity)
-            return JsonResponse({"message":"Ok!"}, status=status.HTTP_201_CREATED)
-    except Exception as e:
-        print(e)
-        return JsonResponse({"message" : f"An error occured: {str(e)}"}, status = status.HTTP_400_BAD_REQUEST) 
-
-@api_view(['POST'])
-@permission_classes([permission()])
-def updateShirtDetail(request): 
-    if origin_checker(request) : return HttpResponseForbidden(forbbiden_message)
-    try:
-        if request.method == 'POST':
-            data  = json.loads(request.body)
-            productId = int(data.get("productId", None))
-            size = data.get("size", None)
-            quantity = int(data.get('quantity'))
-            product = Shirt.objects.get(id = productId) 
-            productDetails = ShirtDetail.objects.filter(productId = product, size = size)
-            if productDetails.exists():
-                targeted_product = productDetails.first()
-                targeted_product.quantity += quantity
-                targeted_product.save()
-            else :
-                ShirtDetail.objects.create(productId = product, size = size, quantity = quantity)
-            return JsonResponse({"message":"Ok!"}, status=status.HTTP_201_CREATED)
-    except Exception as e:
-        print(e)
-        return JsonResponse({"message" : f"An error occured: {str(e)}"}, status = status.HTTP_400_BAD_REQUEST) 
-
-@api_view(['POST'])
-@permission_classes([permission()])
-def updatePantDetail(request): 
-    if origin_checker(request) : return HttpResponseForbidden(forbbiden_message)
-    try:
-        if request.method == 'POST':
-            data  = json.loads(request.body)
-            productId = int(data.get("productId", None))
-            size = data.get("size", None)
-            quantity = int(data.get('quantity'))
-            product = Pant.objects.get(id = productId) 
-            productDetails = PantDetail.objects.filter(productId = product, size = size)
-            if productDetails.exists():
-                targeted_product = productDetails.first()
-                targeted_product.quantity += quantity
-                targeted_product.save()
-            else :
-                PantDetail.objects.create(productId = product, size = size, quantity = quantity)
-            return JsonResponse({"message":"Ok!"}, status=status.HTTP_201_CREATED)
-    except Exception as e:
-        print(e)
-        return JsonResponse({"message" : f"An error occured: {str(e)}"}, status = status.HTTP_400_BAD_REQUEST)
-    
 
 
 @api_view(['POST'])
@@ -467,6 +400,8 @@ def add_product_types(request):
             for i in values:
                 if i not in params[type_]:
                     params[type_].append(i)
+                if i not in params["categories"]:
+                    params["categories"][i] = []
         else:
             params[type_] = values
 
@@ -480,18 +415,26 @@ def add_product_types(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_params(request):
-    parameters = {}
+    categories = {}
     try:
-        param = request.GET.get('param')
         params = load_params()
-        values = params.get(param, {})
-        for type_ in values:
-            parameters[type_] = []
-            for attribut in values[type_]:
-                parameters[type_].append(attribut[0])
-        return JsonResponse({f"{param}":parameters}, status = status.HTTP_200_OK)
+        types_ = params["types"]
+        raw_categories = params["categories"]
+
+        for type_ in types_:
+            categories[type_] = []
+            for attribut in raw_categories[type_]:
+                if attribut:
+                    categories[type_].append(attribut[0])
+
+        return JsonResponse({
+            "types": types_,
+            "categories": categories
+        }, status=200)
+
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        print(e)
+        return JsonResponse({"error": str(e)}, status=500)
     
 @api_view(['GET'])
 @permission_classes([permission()])
@@ -502,26 +445,23 @@ def get_products_types(request):
     return JsonResponse({f"types":choices}, status = status.HTTP_200_OK)
 
 
-@api_view(['GET'])
-@permission_classes([permission()])
-def get_products_choices(request):
-    product_type = request.GET.get('productType')
-    product = product_types[product_type]
-    querySet = product.objects.all()
-    serializer = ProductChoicesSerializer(product)
-    data = serializer(querySet, many = True).data
-    return JsonResponse({"choices":data}, status= status.HTTP_200_OK)
+# @api_view(['GET'])
+# @permission_classes([permission()])
+# def get_products_choices(request):
+#     params = load_params()
+
+#     querySet = Product.objects.filter(product_type = product_type)
+#     data = ProductSerializer(querySet, many = True).data
+#     return JsonResponse({"choices":data}, status= status.HTTP_200_OK)
 
 @api_view(['GET'])
 @permission_classes([permission()])
-def get_product_details(request):
+def get_product_stock_details(request):
     try:
-        product_id = request.GET.get('productId')
-        product_type = request.GET.get('productType')
-        product = productDetail_types[product_type]
-        querySet = product.objects.filter(productId = product_id)
-        serializer = productDetailSerializer_types[product_type](querySet, many = True)
-        return JsonResponse({"data":serializer.data}, status= status.HTTP_200_OK)
+        pid = request.GET.get('productId')
+        product = Product.objects.get(id=pid)
+        serializer = ProductSerializer(product)
+        return JsonResponse({"data":serializer.data["stock"]}, status= status.HTTP_200_OK)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
