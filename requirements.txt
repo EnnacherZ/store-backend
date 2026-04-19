@@ -36,7 +36,6 @@ packaging==24.2
 phonenumbers==8.13.52
 pillow==11.0.0
 propcache==0.3.2
-psycopg2==2.9.10
 psycopg2-binary==2.9.10
 pyasn1==0.6.1
 pyasn1_modules==0.4.1
