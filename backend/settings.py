@@ -38,7 +38,7 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 DEBUG = os.environ.get('IS_DEBUG') == "True"
 
 
-SECURE_SSL_REDIRECT = True
+#SECURE_SSL_REDIRECT = True
 # Application definition
 
 
@@ -218,16 +218,19 @@ SIMPLE_JWT = {
 
 APPEND_SLASH=False
 
-ALLOWED_HOSTS = [os.environ.get('ALLOWED_HOSTS')]
-# CORS_ALLOWED_ORIGINS = [os.environ.get('CORS_ALLOWED_ORIGINS')]
-CORS_ALLOW_ALL_ORIGINS = True
+ALLOWED_HOSTS = [os.environ.get('ALLOWED_HOSTS'),
+                 ".ngrok-free.app"]
+CORS_ALLOWED_ORIGINS = [os.environ.get('CORS_ALLOWED_ORIGINS')]
+#CORS_ALLOW_ALL_ORIGINS = True
 
 
 CSRF_COOKIE_NAME = "csrftoken"
 CSRF_COOKIE_SECURE = True
 CORS_ALLOW_CREDENTIALS = True
 CSRF_COOKIE_HTTPONLY = False
-CSRF_TRUSTED_ORIGINS = [os.environ.get('CORS_ALLOWED_ORIGINS')]
+CSRF_TRUSTED_ORIGINS = [os.environ.get('CORS_ALLOWED_ORIGINS'),
+                        "https://*.ngrok-free.app"
+                        ]
 
 
 

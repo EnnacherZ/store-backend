@@ -20,15 +20,19 @@ from store.views import *
 from store.models import *
 from store.serializers import *
 from store.loyalClient import ActivateClientView, SignUpClientView, SignInClientView
-
+from store.tests import youcanpay_webhook
 
 urlpatterns = [
-    path('ip', get_ip, name='get_ip'),
+    #path('ip', get_ip, name='get_ip'),
+    path('webhook/ycp/', youcanpay_webhook),
     path('products/get/all', get_all_products),
     path('products/get', get_products),
     path('product/search/get', get_searched_product),
     path('payment/handle/', handle_payment),
-    path('payment/token/get', getPaymentToken),
+    path('payment/verify/', handle_verify),
+    path('payment/url/get', getPaymentUrl),
+    path('payment/url/retry/', retry_payment_url),
+    path('payment/cancel/',    cancel_payment),
     path('reviews/add/', add_review),
     path('reviews/get', get_reviews),
     path('orders/check', check_order),

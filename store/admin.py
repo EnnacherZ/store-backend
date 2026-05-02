@@ -5,7 +5,7 @@ from store.models import *
 admin.site.register(Product)
 admin.site.register(ProductStock)
 admin.site.register(Client)
-admin.site.register(ProductOrdered)
+admin.site.register(OrderedProduct)
 admin.site.register(ProductReview)
 admin.site.register(QuantityExceptions)
 admin.site.register(Order)

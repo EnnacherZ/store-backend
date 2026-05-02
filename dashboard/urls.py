@@ -26,7 +26,7 @@ urlpatterns = [
     path('products/parameters/get',get_params),
     path('products/get', get_products),
     path('product/stock/get', get_product_stock_details),
-    path('product/stock/update', updateProductStock),
+    path('product/stock/update/', updateProductStock),
     path('products/types/add',add_product_types),
     path('products/types/get',get_products_types),
     path('orders', OrderViewSet.as_view()),

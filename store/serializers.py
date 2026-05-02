@@ -31,7 +31,7 @@ class ProductReviewSerializer(serializers.ModelSerializer):
 
 class ProductOrderedSerializer(serializers.ModelSerializer):
     class Meta:
-        model = ProductOrdered
+        model = OrderedProduct
         fields = '__all__'
 
 class OrderSerializer(serializers.ModelSerializer):

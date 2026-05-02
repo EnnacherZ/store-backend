@@ -264,13 +264,12 @@ def updateProductStock(request):
         data = request.data  # 🔥 DRF gère déjà le JSON
 
         pid = data.get("productId")
-        product_type = data.get("product_type")
         size = data.get("size")
         quantity = data.get("quantity")
 
         # ✅ validations
-        if not all([pid, product_type, size, quantity]):
-            return Response(
+        if not all([pid, size, quantity]):
+            return JsonResponse(
                 {"message": "Missing required fields"},
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -287,7 +286,6 @@ def updateProductStock(request):
         # 🔹 récupérer le produit
         product = Product.objects.get(
             id=pid,
-            product_type=product_type
         )
 
         # 🔹 stock
@@ -314,7 +312,7 @@ def updateProductStock(request):
 
     except Exception as e:
         print(e)
-        return Response(
+        return JsonResponse(
             {"message": f"An error occurred: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
@@ -328,7 +326,7 @@ def process_deficiency(request):
     exception_id = data.get('exceptionID')
     order_id = data.get('orderID')
     quantity_exception = QuantityExceptions.objects.get(exception_id = exception_id)
-    ordered_product = ProductOrdered.objects.get(exception_id = exception_id)
+    ordered_product = OrderedProduct.objects.get(exception_id = exception_id)
     the_order = Order.objects.get(order_id = order_id)
     quantity_exception.treated = True;ordered_product.available = True;the_order.exception = False
     quantity_exception.save();ordered_product.save();the_order.save()

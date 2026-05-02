@@ -8,6 +8,13 @@ from django.contrib.auth.hashers import make_password, check_password
 
 base_dir = os.path.dirname(os.path.dirname(__file__))
 
+is_paid_choices = [
+    ('pending',   'Pending'),    # online: waiting for webhook confirmation
+    ('confirmed', 'Confirmed'),  # online: webhook confirmed payment
+    ('failed',    'Failed'),     # online: webhook reported failure
+    ('cod',       'Cash on Delivery'),  # COD: paid on delivery
+]
+
 # Construire le chemin vers le fichier JSON
 PARAMS_PATH = os.path.join(base_dir, 'dashboard', 'parameters.json')
 
@@ -25,112 +32,132 @@ def get_choices(type_, label):
     return choices
 
 
+# ─── Models ───────────────────────────────────────────────────────────────────
+ 
 class Product(models.Model):
     product_type = models.CharField(max_length=100)
-    category = models.CharField(max_length=100)
-    ref = models.CharField(max_length=100)
-    name = models.CharField(max_length=100)
-    price = models.FloatField(validators=[MinValueValidator(0.0)])
-    newest = models.BooleanField(default=False) 
-    promo = models.FloatField(validators=[MinValueValidator(0.0), MaxValueValidator(100.0)], default=0)
-    image = models.FileField(storage=MediaCloudinaryStorage(),
-                            upload_to='documents/products', 
-                            default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
-    image1 = models.FileField(storage=MediaCloudinaryStorage(),
-                            upload_to='documents/products', 
-                            default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
-    image2 = models.FileField(storage=MediaCloudinaryStorage(),
-                            upload_to='documents/products', 
-                            default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
-    image3 = models.FileField(storage=MediaCloudinaryStorage(),
-                            upload_to='documents/products', 
-                            default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
-    image4 = models.FileField(storage=MediaCloudinaryStorage(),
-                            upload_to='documents/products', 
-                            default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
-    # class Meta:
-    #     abstract = True
+    category     = models.CharField(max_length=100)
+    ref          = models.CharField(max_length=100)
+    name         = models.CharField(max_length=100)
+    price        = models.FloatField(validators=[MinValueValidator(0.0)])
+    newest       = models.BooleanField(default=False)
+    promo        = models.FloatField(validators=[MinValueValidator(0.0), MaxValueValidator(100.0)], default=0)
+    image        = models.FileField(storage=MediaCloudinaryStorage(), upload_to='documents/products',
+                                    default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
+    image1       = models.FileField(storage=MediaCloudinaryStorage(), upload_to='documents/products',
+                                    default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
+    image2       = models.FileField(storage=MediaCloudinaryStorage(), upload_to='documents/products',
+                                    default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
+    image3       = models.FileField(storage=MediaCloudinaryStorage(), upload_to='documents/products',
+                                    default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
+    image4       = models.FileField(storage=MediaCloudinaryStorage(), upload_to='documents/products',
+                                    default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
+ 
     def __str__(self):
-        return "%s %s %s"%(self.category, self.ref, self.name)
-
+        return "%s %s %s" % (self.category, self.ref, self.name)
+ 
+ 
 class ProductStock(models.Model):
-    product = models.ForeignKey(Product, related_name="stock", on_delete=models.CASCADE)
-    size = models.CharField(max_length=100)
-    quantity = models.PositiveIntegerField()
-    # class Meta:
-    #     abstract = True
+    product  = models.ForeignKey(Product, related_name="stock", on_delete=models.CASCADE)
+    size     = models.CharField(max_length=100)
+    quantity = models.PositiveIntegerField()       # real available stock
+    reserved = models.PositiveIntegerField(default=0)  # held by pending online payments
+ 
+    def available_quantity(self):
+        """Stock the customer can actually buy right now."""
+        return max(0, self.quantity - self.reserved)
+ 
     def __str__(self):
-        return "%s %s %s"%(self.product, "size : " + str(self.size) , "quantity : "+str(self.quantity))
-
-
-
+        return "%s size:%s qty:%s reserved:%s" % (self.product, self.size, self.quantity, self.reserved)
+ 
+ 
 class ProductReview(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='reviews')
-    name = models.CharField(max_length=50)
-    email = models.EmailField()
-    review = models.CharField(max_length=150)
-    stars = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)])
-    date = models.DateTimeField()
-
-
+    name    = models.CharField(max_length=50)
+    email   = models.EmailField()
+    review  = models.CharField(max_length=150)
+    stars   = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)])
+    date    = models.DateTimeField()
+ 
+ 
 class Client(models.Model):
     first_name = models.CharField(max_length=100)
-    last_name = models.CharField(max_length=100)
-    email = models.EmailField()
-    phone = models.CharField(max_length=20)
-    city = models.CharField(max_length=50)
-    address = models.CharField(max_length=100)
-
+    last_name  = models.CharField(max_length=100)
+    email      = models.EmailField()
+    phone      = models.CharField(max_length=20)
+    city       = models.CharField(max_length=50)
+    address    = models.CharField(max_length=100)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+ 
     def __str__(self):
-        return "%s %s"%(self.first_name, self.last_name)
-
-
+        return "%s %s" % (self.first_name, self.last_name)
+ 
+ 
 class Order(models.Model):
-    client = models.ForeignKey(Client, on_delete=models.CASCADE)
-    order_id = models.UUIDField(default = uuid.uuid4, editable=False, unique=True)
+    client         = models.ForeignKey(Client, on_delete=models.CASCADE)
+    order_id       = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     transaction_id = models.CharField(max_length=100, null=True, blank=True)
-    amount = models.FloatField(validators=[MinValueValidator(0.0)])
-    date = models.CharField(max_length=100, default="")
-    status = models.BooleanField(default=False)
-    exception = models.BooleanField(default = False)
-    waiting = models.BooleanField(default=True)
-    payment_mode = models.BooleanField(default=True, editable=False) #True if is online,  False else
-    currency = models.CharField(max_length=100, default='MAD')
-    invoice = models.FileField(storage=RawMediaCloudinaryStorage(), upload_to='documents/invoices', null=True, blank=True)
-    delivery_form = models.FileField(storage=RawMediaCloudinaryStorage(), upload_to='documents/delivery_forms', null=True, blank=True)
-    delivered = models.BooleanField(default=False)
-    delivery_man = models.CharField(max_length=100, null=True, default=None)
+    amount         = models.FloatField(validators=[MinValueValidator(0.0)])
+    date           = models.CharField(max_length=100, default="")
+    status         = models.BooleanField(default=False)
+    exception      = models.BooleanField(default=False)
+ 
+    # True  = online payment (YCPay)
+    # False = cash on delivery
+    payment_mode   = models.BooleanField(default=True, editable=False)
+ 
+    # pending   → online order created, awaiting webhook
+    # confirmed → webhook confirmed payment
+    # failed    → webhook reported failure OR polling timeout
+    # cod       → cash on delivery order (no online payment)
+    is_paid        = models.CharField(max_length=50, default='pending', choices=is_paid_choices, )
+ 
+    currency       = models.CharField(max_length=100, default='MAD')
+    invoice        = models.FileField(storage=RawMediaCloudinaryStorage(), upload_to='documents/invoices',
+                                      null=True, blank=True)
+    delivery_form  = models.FileField(storage=RawMediaCloudinaryStorage(), upload_to='documents/delivery_forms',
+                                      null=True, blank=True)
+    delivered      = models.BooleanField(default=False)
+    delivery_man   = models.CharField(max_length=100, null=True, default=None)
+    date           = models.DateTimeField(auto_now_add=True,)  # used by cleanup job
+ 
     def __str__(self):
-        return "%s "%(self.order_id)
-
-class ProductOrdered(models.Model):
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='ordered_products')
-    client = models.ForeignKey(Client, on_delete=models.CASCADE)
-    product_id = models.PositiveIntegerField(editable=False)
+        return str(self.order_id)
+ 
+ 
+class OrderedProduct(models.Model):
+    order        = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='ordered_products')
+    client       = models.ForeignKey(Client, on_delete=models.CASCADE)
+    product_id   = models.PositiveIntegerField(editable=False)
     product_type = models.CharField(max_length=50)
-    size = models.CharField(max_length=20)
-    quantity = models.PositiveIntegerField()
-    category = models.CharField(max_length=50)
-    ref = models.CharField(max_length=50)
-    name = models.CharField(max_length=50)
-    price = models.FloatField(validators=[MinValueValidator(0)])
-    available = models.BooleanField(default=True)
+    size         = models.CharField(max_length=20)
+    quantity     = models.PositiveIntegerField()
+    category     = models.CharField(max_length=50)
+    ref          = models.CharField(max_length=50)
+    name         = models.CharField(max_length=50)
+    price        = models.FloatField(validators=[MinValueValidator(0)])
+    available    = models.BooleanField(default=True)
     exception_id = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
+ 
+    # True  = stock has been physically deducted (confirmed/COD)
+    # False = still just reserved (pending online payment)
+    stock_deducted = models.BooleanField(default=False, editable=False)
+ 
     def __str__(self):
-        return "%s %s %s %s"%(self.client, self.product_type,self.category, self.name)
-
+        return "%s %s %s %s" % (self.client, self.product_type, self.category, self.name)
+ 
+ 
 class QuantityExceptions(models.Model):
-    client = models.ForeignKey(Client, on_delete=models.CASCADE)
-    order = models.ForeignKey(Order, to_field='order_id', on_delete=models.CASCADE)
-    exception_id = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
-    product_type = models.CharField(max_length=20)
+    client           = models.ForeignKey(Client, on_delete=models.CASCADE)
+    order            = models.ForeignKey(Order, to_field='order_id', on_delete=models.CASCADE)
+    exception_id     = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
+    product_type     = models.CharField(max_length=20)
     product_category = models.CharField(max_length=50)
-    product_ref = models.PositiveIntegerField()
-    product_name = models.CharField(max_length=50)
-    product_size = models.CharField(max_length=50)
-    delta_quantity = models.PositiveIntegerField()
-    treated = models.BooleanField(default=False)
-
+    product_ref      = models.PositiveIntegerField()
+    product_name     = models.CharField(max_length=50)
+    product_size     = models.CharField(max_length=50)
+    delta_quantity   = models.PositiveIntegerField()
+    treated          = models.BooleanField(default=False)
 
 
 class LoyalClient(models.Model):
