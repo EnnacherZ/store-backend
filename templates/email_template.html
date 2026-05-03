@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ subject }}</title>
+  <!--[if mso]>
+  <noscript>
+    <xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
+  </noscript>
+  <![endif]-->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+      min-height: 100vh;
+      padding: 48px 16px;
+    }
+    .wrapper {
+      max-width: 620px;
+      margin: 0 auto;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.55);
+    }
+    /* ── HEADER ── */
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 48px 40px 36px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .header::before {
+      content: '';
+      position: absolute;
+      top: -50px; right: -50px;
+      width: 200px; height: 200px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.06);
+    }
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: -40px; left: -40px;
+      width: 160px; height: 160px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+    }
+    .logo-box {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 70px; height: 70px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.18);
+      border: 1.5px solid rgba(255,255,255,0.3);
+      margin-bottom: 18px;
+      position: relative;
+      z-index: 1;
+    }
+    .logo-box img {
+      width: 40px; height: 40px;
+      object-fit: contain;
+    }
+    .logo-svg {
+      position: relative; z-index: 1;
+      display: inline-block;
+    }
+    .company-name {
+      color: #ffffff;
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+      position: relative; z-index: 1;
+    }
+    .company-tagline {
+      color: rgba(255,255,255,0.6);
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      position: relative; z-index: 1;
+    }
+    /* ── ACCENT BAR ── */
+    .accent-bar {
+      height: 4px;
+      background: linear-gradient(90deg, #f093fb, #f5576c, #fda085, #667eea);
+    }
+    /* ── BODY ── */
+    .body {
+      background: #ffffff;
+      padding: 44px 40px 36px;
+    }
+    .greeting-label {
+      font-size: 12px;
+      color: #9b59b6;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .greeting-name {
+      font-size: 28px;
+      font-weight: 800;
+      color: #1a1a2e;
+      margin-bottom: 22px;
+      line-height: 1.25;
+    }
+    .subject-pill {
+      display: inline-block;
+      background: linear-gradient(135deg, rgba(102,126,234,0.1), rgba(118,75,162,0.1));
+      border: 1px solid rgba(102,126,234,0.25);
+      border-radius: 100px;
+      padding: 7px 18px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #667eea;
+      margin-bottom: 22px;
+      letter-spacing: 0.05em;
+    }
+    .divider-left {
+      height: 1px;
+      background: linear-gradient(90deg, rgba(102,126,234,0.25), transparent);
+      margin-bottom: 22px;
+    }
+    .message-body {
+      font-size: 16px;
+      line-height: 1.78;
+      color: #4a4a6a;
+      margin-bottom: 28px;
+    }
+    /* ── INFO CARD ── */
+    .info-card {
+      background: linear-gradient(135deg, #f8f7ff 0%, #f0edff 100%);
+      border-radius: 16px;
+      padding: 20px 24px;
+      margin-bottom: 30px;
+      border: 1px solid #e8e0ff;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .info-icon {
+      width: 46px; height: 46px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .info-label {
+      font-size: 11px;
+      color: #9b8ec4;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+    .info-value {
+      font-size: 17px;
+      font-weight: 800;
+      color: #2d2a4a;
+    }
+    /* ── CTA ── */
+    .cta-wrapper {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .cta-button {
+      display: inline-block;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #ffffff !important;
+      text-decoration: none;
+      padding: 15px 44px;
+      border-radius: 100px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      box-shadow: 0 10px 28px rgba(102,126,234,0.4);
+    }
+    .divider-center {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #e8e0ff, transparent);
+      margin-bottom: 22px;
+    }
+    .help-note {
+      font-size: 13px;
+      color: #8b8baa;
+      line-height: 1.7;
+      text-align: center;
+    }
+    /* ── FOOTER ── */
+    .footer {
+      background: #1a1a2e;
+      padding: 28px 40px;
+      text-align: center;
+    }
+    .social-row {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .social-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.5);
+      font-size: 12px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .footer-text {
+      color: rgba(255,255,255,0.45);
+      font-size: 12px;
+      line-height: 1.75;
+    }
+    .footer-text a {
+      color: #9b59b6;
+      text-decoration: none;
+    }
+    .footer-fine {
+      color: rgba(255,255,255,0.25);
+      font-size: 11px;
+      margin-top: 10px;
+    }
+    @media (max-width: 480px) {
+      .header { padding: 36px 24px 28px; }
+      .body { padding: 32px 24px 28px; }
+      .footer { padding: 24px; }
+      .greeting-name { font-size: 22px; }
+      .info-card { flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+
+    <!-- HEADER -->
+    <div class="header">
+      <div class="logo-box">
+        {% if company_logo_url %}
+          <img src="{{ company_logo_url }}" alt="{{ company_name }} logo" />
+        {% else %}
+          <!-- Default geometric logo SVG -->
+          <svg class="logo-svg" width="38" height="38" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18 4L32 12V24L18 32L4 24V12L18 4Z" fill="white" fill-opacity="0.9"/>
+            <path d="M18 10L26 15V21L18 26L10 21V15L18 10Z" fill="white" fill-opacity="0.35"/>
+            <circle cx="18" cy="18" r="3.5" fill="white"/>
+          </svg>
+        {% endif %}
+      </div>
+      <div class="company-name">{{ company_name }}</div>
+      <div class="company-tagline">{{ company_tagline }}</div>
+    </div>
+
+    <!-- RAINBOW ACCENT BAR -->
+    <div class="accent-bar"></div>
+
+    <!-- BODY -->
+    <div class="body">
+      <div class="greeting-label">Hello,</div>
+      <h1 class="greeting-name">{{ customer_name }} 👋</h1>
+
+      <div class="subject-pill">{{ subject }}</div>
+
+      <div class="divider-left"></div>
+
+      <p class="message-body">{{ body }}</p>
+
+      {% if reference_number %}
+      <div class="info-card">
+        <div class="info-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z"
+              stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div>
+          <div class="info-label">Reference</div>
+          <div class="info-value">{{ reference_number }}</div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if cta_url %}
+      <div class="cta-wrapper">
+        <a href="{{ cta_url }}" class="cta-button">{{ cta_label|default:"View Details →" }}</a>
+      </div>
+      {% endif %}
+
+      <div class="divider-center"></div>
+
+      <p class="help-note">
+        Questions? Simply reply to this email and our team will be happy to help.<br/>
+        We typically respond within <strong>24 hours</strong>.
+      </p>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <div class="social-row">
+        <a href="{{ social_facebook|default:'#' }}" class="social-icon">f</a>
+        <a href="{{ social_twitter|default:'#' }}" class="social-icon">𝕏</a>
+        <a href="{{ social_linkedin|default:'#' }}" class="social-icon">in</a>
+        <a href="{{ social_instagram|default:'#' }}" class="social-icon">▶</a>
+      </div>
+      <div class="footer-text">
+        © {{ current_year }} {{ company_name }}. All rights reserved.<br/>
+        {{ company_address }}
+      </div>
+      <div class="footer-fine">
+        You're receiving this because you're a valued customer.
+        {% if unsubscribe_url %}
+          <a href="{{ unsubscribe_url }}">Unsubscribe</a>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

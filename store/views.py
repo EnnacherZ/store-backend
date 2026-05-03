@@ -9,11 +9,10 @@ from rest_framework import status
 from .serializers import *
 from dotenv import load_dotenv
 from django.db import transaction
-from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
 import traceback
-import requests
+
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -26,84 +25,137 @@ from youcanpay.models.data import Customer
 
 
 
-
-
+from django.template.loader import render_to_string
 
 
 @csrf_exempt
 def envoyer_email(request):
+    """
+    POST /api/envoyer-email/
+
+    Required fields:
+        subject         str   — Email subject line
+        body            str   — Plain-text / main message body
+        to              str   — Recipient(s), comma-separated
+        customer_name   str   — Recipient's display name (shown in greeting)
+
+    Optional fields:
+        cc              str   — CC addresses, comma-separated
+        bcc             str   — BCC addresses, comma-separated
+        file            file  — Attachment (multipart/form-data)
+
+        reference_number str  — Order / ticket / ref number shown in info card
+        cta_url          str  — Call-to-action button URL
+        cta_label        str  — Call-to-action button label (default: "View Details →")
+
+        company_name     str  — Sender company name   (default: settings.COMPANY_NAME)
+        company_tagline  str  — Tagline under logo     (default: settings.COMPANY_TAGLINE)
+        company_logo_url str  — Absolute URL to logo   (default: settings.COMPANY_LOGO_URL)
+        company_address  str  — Footer address          (default: settings.COMPANY_ADDRESS)
+
+        unsubscribe_url  str  — Unsubscribe link in footer
+        social_facebook  str  — Facebook URL
+        social_twitter   str  — Twitter/X URL
+        social_linkedin  str  — LinkedIn URL
+        social_instagram str  — Instagram URL
+    """
     if request.method != "POST":
         return JsonResponse({"error": "Only POST allowed"}, status=405)
 
     try:
-        # 🔹 récupérer données
-        subject = request.POST.get("subject", "").strip()
-        body = request.POST.get("body", "").strip()
-        to = request.POST.get("to", "").strip()
-        cc = request.POST.get("cc", "")
-        bcc = request.POST.get("bcc", "")
+        # ── Required fields ────────────────────────────────────────────────
+        subject       = request.POST.get("subject", "").strip()
+        body          = request.POST.get("body", "").strip()
+        to            = request.POST.get("to", "").strip()
+        customer_name = request.POST.get("customer_name", "").strip()
 
+        # if not subject or not body or not to or not customer_name:
+        #     return JsonResponse(
+        #         {"error": "Missing required fields: subject, body, to, customer_name"},
+        #         status=400,
+        #     )
+
+        # ── Optional fields ────────────────────────────────────────────────
+        cc   = request.POST.get("cc", "")
+        bcc  = request.POST.get("bcc", "")
         file = request.FILES.get("file")
 
-        if not subject or not body or not to:
-            return JsonResponse({"error": "Missing fields"}, status=400)
+        reference_number = request.POST.get("reference_number", "")
+        cta_url          = request.POST.get("cta_url", "")
+        cta_label        = request.POST.get("cta_label", "View Details →")
 
-        # 🔹 emails
-        to_list = [e.strip() for e in to.split(",") if e.strip()]
-        cc_list = [e.strip() for e in cc.split(",") if e.strip()]
+        company_name     = request.POST.get("company_name",    getattr(settings, "COMPANY_NAME",    "Your Company"))
+        company_tagline  = request.POST.get("company_tagline", getattr(settings, "COMPANY_TAGLINE", "Premium Experience"))
+        company_logo_url = request.POST.get("company_logo_url",getattr(settings, "COMPANY_LOGO_URL",""))
+        company_address  = request.POST.get("company_address", getattr(settings, "COMPANY_ADDRESS", ""))
+
+        unsubscribe_url  = request.POST.get("unsubscribe_url", "")
+        social_facebook  = request.POST.get("social_facebook", "")
+        social_twitter   = request.POST.get("social_twitter",  "")
+        social_linkedin  = request.POST.get("social_linkedin",  "")
+        social_instagram = request.POST.get("social_instagram", "")
+
+        # ── Recipient lists ────────────────────────────────────────────────
+        to_list  = [e.strip() for e in to.split(",")  if e.strip()]
+        cc_list  = [e.strip() for e in cc.split(",")  if e.strip()]
         bcc_list = [e.strip() for e in bcc.split(",") if e.strip()]
-
         all_recipients = to_list + cc_list + bcc_list
 
-        # 🔹 config Gmail
+        # ── Render HTML template ───────────────────────────────────────────
+        html_content = render_to_string(
+            "email_template.html",
+            {
+                "subject":          subject,
+                "body":             body,
+                "customer_name":    customer_name,
+                "reference_number": reference_number,
+                "cta_url":          cta_url,
+                "cta_label":        cta_label,
+                "company_name":     company_name,
+                "company_tagline":  company_tagline,
+                "company_logo_url": company_logo_url,
+                "company_address":  company_address,
+                "unsubscribe_url":  unsubscribe_url,
+                "social_facebook":  social_facebook,
+                "social_twitter":   social_twitter,
+                "social_linkedin":  social_linkedin,
+                "social_instagram": social_instagram,
+                "current_year":     datetime.datetime.now,
+            },
+        )
+
+        # ── Build MIME message ─────────────────────────────────────────────
         sender_email = settings.EMAIL_HOST_USER
-        password = settings.EMAIL_HOST_PASSWORD
+        password     = settings.EMAIL_HOST_PASSWORD
 
-        # 🔥 créer email
-        msg = MIMEMultipart()
-        msg["From"] = sender_email
-        msg["To"] = ", ".join(to_list)
-        msg["Cc"] = ", ".join(cc_list)
+        msg = MIMEMultipart("alternative")
+        msg["From"]    = sender_email
+        msg["To"]      = ", ".join(to_list)
+        msg["Cc"]      = ", ".join(cc_list)
         msg["Subject"] = subject
-
-        # ✨ HTML + TEXT
-        html_content = f"""
-        <div style="font-family:Arial;max-width:600px;margin:auto;">
-            <h2>Hello 👋</h2>
-            <p>{body}</p>
-        </div>
-        """
 
         msg.attach(MIMEText(body, "plain"))
         msg.attach(MIMEText(html_content, "html"))
 
-        # 📎 fichier
         if file:
-            part = MIMEApplication(file.read(), Name=file.name)
-            part["Content-Disposition"] = f'attachment; filename="{file.name}"'
-            msg.attach(part)
+            attachment = MIMEApplication(file.read(), Name=file.name)
+            attachment["Content-Disposition"] = f'attachment; filename="{file.name}"'
+            msg.attach(attachment)
 
-        # 🚀 SMTP
-        smtp_server = "smtp.gmail.com"
-        port = 587
+        # ── Send via Gmail SMTP ────────────────────────────────────────────
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(sender_email, password)
+            server.sendmail(sender_email, all_recipients, msg.as_string())
 
-        print("AVANT SMTP")
-
-        server = smtplib.SMTP(smtp_server, port)
-        server.starttls()
-        server.login(sender_email, password)
-
-        server.sendmail(sender_email, all_recipients, msg.as_string())
-
-        server.quit()
-
-        print("EMAIL SENT SUCCESS")
-
-        return JsonResponse({"message": "Email sent successfully via smtplib ✅"})
+        return JsonResponse({"message": "Email sent successfully ✅"})
 
     except Exception as e:
-        print("🔥 ERROR:", repr(e))
+        traceback.print_exc()
+        print(e)
         return JsonResponse({"error": str(e)}, status=500)
+
 
 
 load_dotenv()
@@ -124,7 +176,7 @@ def get_ip_address(request):
     return request.META.get('REMOTE_ADDR')
  
  
-def _build_ordered_product_payload(product, item, order, exception_id):
+def _build_ordered_product_payload(product:Product, item, order, exception_id):
     """Return the dict appended to ordered_products in API responses."""
     return {
         "productType" : product.product_type,
@@ -142,9 +194,10 @@ def _build_ordered_product_payload(product, item, order, exception_id):
     }
 
 def origin_checker(request):
-    referer = request.META.get('HTTP_REFERER','')
-    if referer in ALLOWED_ORIGINS: return False
-    else : return True
+    # referer = request.META.get('HTTP_REFERER','')
+    # if referer in ALLOWED_ORIGINS: return False
+    # else : return True
+    pass
 
 def _release_reservations(order):
     """
@@ -609,8 +662,10 @@ def retry_payment_url(request):
             order = Order.objects.select_for_update().get(
                 order_id=order_id,
                 payment_mode=True,          # must be an online order
-                is_paid__in=['failed', 'pending'],  # only retryable states
             )
+            if order.is_paid in ['confirmed', 'cod']:
+                return JsonResponse({'message': 'Order is already treated.'}, status=423)
+
         except Order.DoesNotExist:
             return JsonResponse({'message': 'Order not found or not retryable.'}, status=404)
  
@@ -650,7 +705,7 @@ def retry_payment_url(request):
             return JsonResponse({
                 'payment_url': payment_url,
                 'order_id'   : str(order.order_id),
-            })
+                }, status = status.HTTP_200_OK)
  
         except Exception as e:
             # YCPay call failed — revert status so the order stays retryable
@@ -698,7 +753,7 @@ def cancel_payment(request):
                 is_paid__in=['failed', 'pending'],
             )
         except Order.DoesNotExist:
-            return JsonResponse({'message': 'Order not found or already processed.'}, status=404)
+            return JsonResponse({'message': 'Order not found or already processed.'}, status=423)
  
         # Release reservations
         _release_reservations(order)
@@ -720,8 +775,8 @@ def cancel_payment(request):
 @permission_classes([AllowAny])
 def add_review(request):
     if request.method == 'POST':
-        if origin_checker(request):return HttpResponseForbidden(forbbiden_message)
-        else:
+        #if origin_checker(request):return HttpResponseForbidden(forbbiden_message)
+        #else:
             try:
                 data = json.loads(request.body)
                 id = int(data.get('product', ''))
@@ -750,23 +805,27 @@ def add_review(request):
                 new_review.save()
                 return JsonResponse({'message': 'Review added'}, status=status.HTTP_200_OK)
             except Exception as e:
+                traceback.print_exc()
                 return JsonResponse({'message': f'Error occurred: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_reviews(request):
-    if origin_checker(request): return HttpResponseForbidden(forbbiden_message)
-    else:
+    #if origin_checker(request): return HttpResponseForbidden(forbbiden_message)
+        
         try:
-            pid = int(request.GET.get('productId'))
+            print(request.META.get('HTTP_REFERER'))
+            pid = int(request.GET.get('product_id'))
             product_type = request.GET.get('productType')
-            product_reviews = ProductReview.objects.filter(product_id = pid, product_type = product_type)
+            product_reviews = ProductReview.objects.filter(product_id = pid)
             serialized_reviews = ProductReviewSerializer(product_reviews, many=True)
             products = Product.objects.filter(product_type=product_type, newest=True)
             serialized_products = ProductSerializer(products, many=True)
+            print(serialized_reviews.data)
             return JsonResponse({'reviews':serialized_reviews.data, 'products':serialized_products.data}, status=status.HTTP_200_OK)
         except Exception as e:
+            traceback.print_exc()
             return JsonResponse({'message': f'Error occurred: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -793,8 +852,8 @@ def get_searched_product(request):
 
         # 🔹 Produit principal
         searched_product = Product.objects.get(
-            category=cat,
-            ref=ref,
+            # category=cat,
+            # ref=ref,
             id=pid
         )
 
@@ -887,15 +946,45 @@ def get_products(request):
 def check_order(request):
     try:
         order_id = request.GET.get('orderID')
-        the_order = Order.objects.get(order_id = order_id)
-        state = the_order.status
-        serialized_order = OrderSerializer(the_order, many = False)
-        client = serialized_order.data["client"]
-        return JsonResponse({'state': state, 'found': True, 'error':False, 'client' : client}, status=status.HTTP_200_OK)
+        the_order = Order.objects.prefetch_related('ordered_products').select_related('client').get(order_id=order_id)
+        serialized_order = OrderSerializer(the_order, many=False)
+        client = serialized_order.data['client']
+        products = [
+            {
+                'name': item.name,
+                'ref': item.ref,
+                'category': item.category,
+                'product_type': item.product_type,
+                'size': item.size,
+                'quantity': item.quantity,
+                'price': item.price,
+            }
+            for item in the_order.ordered_products.all()
+        ]
+        return JsonResponse(
+            {
+                'state': the_order.status,
+                'found': True,
+                'error': False,
+                'client': client,
+                'order': {
+                    'order_id': str(the_order.order_id),
+                    'amount': the_order.amount,
+                    'currency': the_order.currency,
+                    'is_paid': the_order.is_paid,
+                    'payment_mode': 'online' if the_order.payment_mode else 'cash_on_delivery',
+                    'delivered': the_order.delivered,
+                    'status': the_order.status,
+                    'date': the_order.date,
+                    'products': products,
+                },
+            },
+            status=200,
+        )
     except Order.DoesNotExist:
-        return JsonResponse({'found': False, 'error':False})
-    except Exception as e :
-        return JsonResponse({'error':True})
+        return JsonResponse({'found': False, 'error': False}, status=200)
+    except Exception:
+        return JsonResponse({'error': True}, status=500)
 
 
 
@@ -942,64 +1031,4 @@ def get_all_products(request):
             {"message": f"An error occurred: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#EventSoure functions
-# def event_stream_shoes():
-#     while True:
-#         products = Shoe.objects.all()
-#         serializer = ShoeSerializer(products, many=True)
-#         data = json.dumps({'data': serializer.data})
-#         yield f"data: {smart_str(data)}\n\n"
-#         time.sleep(2)
-
-# def sse_shoes(request):
-#         if origin_checker(request):return HttpResponseForbidden(forbbiden_message)
-#         response = StreamingHttpResponse(event_stream_shoes(), content_type='text/event-stream')
-#         response['Cache-Control'] = 'no-cache'
-#         return response
-
-
 

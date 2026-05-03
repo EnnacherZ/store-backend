@@ -79,7 +79,7 @@ ROOT_URLCONF = 'backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, "templates")],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -243,3 +243,22 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+
+
+
+
+# ── Company identity (used in every email automatically) ──────────────────────
+COMPANY_NAME        = "Al  Firdaous Store"
+COMPANY_TAGLINE     = "Premium Experience"          # shown under the logo
+COMPANY_LOGO_URL    = "https://www.alfirdaousstore.com/assets/WHITE%20FIRDAOUS%20STORE-DgnBjEdy.png"  # leave "" to use default SVG
+COMPANY_ADDRESS     = "123 Creative Avenue, Laayoune, Maroc"
+
+# ── Footer social links (leave "" to hide the icon) ──────────────────────────
+EMAIL_SOCIAL_FACEBOOK  = "https://facebook.com/yourpage"
+EMAIL_SOCIAL_TWITTER   = "https://twitter.com/yourhandle"
+EMAIL_SOCIAL_LINKEDIN  = "https://linkedin.com/company/yourcompany"
+EMAIL_SOCIAL_INSTAGRAM = "https://instagram.com/yourhandle"
+
+# ── Unsubscribe link shown at the bottom of every email ───────────────────────
+EMAIL_UNSUBSCRIBE_URL  = "https://yourdomain.com/unsubscribe/"

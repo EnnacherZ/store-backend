@@ -77,7 +77,7 @@ class ProductReview(models.Model):
     email   = models.EmailField()
     review  = models.CharField(max_length=150)
     stars   = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)])
-    date    = models.DateTimeField()
+    date    = models.DateTimeField(auto_now_add=True,)
  
  
 class Client(models.Model):
@@ -144,7 +144,7 @@ class OrderedProduct(models.Model):
     stock_deducted = models.BooleanField(default=False, editable=False)
  
     def __str__(self):
-        return "%s %s %s %s" % (self.client, self.product_type, self.category, self.name)
+        return "%s %s %s %s %s" % (self.client, self.order, self.product_type, self.category, self.name)
  
  
 class QuantityExceptions(models.Model):

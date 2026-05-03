@@ -5,9 +5,13 @@ from .models import *
 
 
 class ProductStockSerializer(serializers.ModelSerializer):
+    quantity = serializers.SerializerMethodField()
     class Meta:
         model = ProductStock
         fields = '__all__'
+    
+    def get_quantity(self, obj):
+        return obj.available_quantity()
 
 class ProductSerializer(serializers.ModelSerializer):
     stock = ProductStockSerializer(many=True, read_only = True)
