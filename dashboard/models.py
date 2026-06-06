@@ -59,10 +59,9 @@ class AuthUser(AbstractUser):
             self.is_staff = False
             self.is_superuser = False
 
-            super().save(update_fields=[
-                "is_staff",
-                "is_superuser"
-            ])
-
             self.groups.clear()
             self.user_permissions.clear()
+            super().save(update_fields=[
+                            "is_staff",
+                            "is_superuser"
+                        ])

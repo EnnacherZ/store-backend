@@ -1,8 +1,8 @@
 # client/views.py
-import traceback
+import traceback, os
 import uuid
 from datetime import datetime
-
+from dotenv import load_dotenv
 from django.core.mail import send_mail
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -18,12 +18,16 @@ from rest_framework_simplejwt.exceptions import TokenError
 from .models import ClientProfile, Client, Order
 from dashboard.authentication import CookieJWTAuthentication  # reuse existing ✓
 
+load_dotenv()
+
 User = get_user_model()  # → AuthUser
 
 
+frontend_url = os.environ.get('REQUEST_ALLOWED_ORIGINS')
+
 def get_activation_url(code):
-    base = getattr(settings, "CLIENT_ACTIVATION_URL", "http://localhost:5173/activate/")
-    return f"{base}{code}/"
+    base = frontend_url
+    return f"{base}account/activate/{code}/"
 
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
