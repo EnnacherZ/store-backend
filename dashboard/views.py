@@ -43,7 +43,6 @@ class RefreshTokenCookieVieww(APIView):
                 secure=True,
                 samesite='None',
                 max_age=300,
-                domain='localhost'
             )
             return response
 
@@ -100,7 +99,6 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         }, status=status.HTTP_200_OK)
 
         cookie_max_age = 3600 * 24  # 1 day
-        secure = not settings.DEBUG
 
         res.set_cookie(
             key='access_token',
@@ -139,12 +137,10 @@ class LogoutView(APIView):
         res.delete_cookie(
             key='access_token',
             samesite='None',
-            path='/'
         )
         res.delete_cookie(
             key='refresh_token',
             samesite='None',
-            path='/'
         )
 
         return res

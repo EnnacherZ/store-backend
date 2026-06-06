@@ -29,12 +29,18 @@ class AuthUserManager(BaseUserManager):
 
 
 class AuthUser(AbstractUser):
-    ROLES_CHOICES = [
-        ('admin', 'admin'),
-        ('manager', 'manager'),
-        ('delivery', 'delivery')
-    ]
-    role = models.CharField(max_length=100, choices=ROLES_CHOICES, blank=False)
+    class Roles(models.TextChoices):
+        ADMIN = "admin", "Admin"
+        MANAGER = "manager", "Manager"
+        DELIVERY = "delivery", "Delivery"
+        CLIENT = "client", "Client"
+
+    role = models.CharField(
+        max_length=20,
+        choices=Roles.choices,
+        default=Roles.CLIENT
+    )
+
     image = models.FileField(storage=MediaCloudinaryStorage(), 
                              upload_to='documents/users', 
                              default='https://res.cloudinary.com/de2wpriie/image/upload/v1751961711/guest_shcrbi.png'
@@ -42,3 +48,21 @@ class AuthUser(AbstractUser):
     
     objects = AuthUserManager()
     REQUIRED_FIELDS=['role']
+
+    def save(self, *args, **kwargs):
+
+        super().save(*args, **kwargs)
+
+        # 🚨 clients should never have permissions
+        if self.role == self.Roles.CLIENT:
+
+            self.is_staff = False
+            self.is_superuser = False
+
+            super().save(update_fields=[
+                "is_staff",
+                "is_superuser"
+            ])
+
+            self.groups.clear()
+            self.user_permissions.clear()

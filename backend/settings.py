@@ -196,7 +196,7 @@ DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'dashboard.authentication.CookieJWTAuthentication',
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        #'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     # Tu peux également configurer d'autres options ici
     'DEFAULT_PERMISSION_CLASSES': [
@@ -218,8 +218,7 @@ SIMPLE_JWT = {
 
 APPEND_SLASH=False
 
-ALLOWED_HOSTS = [os.environ.get('ALLOWED_HOSTS'),
-                 ".ngrok-free.app"]
+ALLOWED_HOSTS = [os.environ.get('ALLOWED_HOSTS')]
 CORS_ALLOWED_ORIGINS = [os.environ.get('CORS_ALLOWED_ORIGINS')]
 #CORS_ALLOW_ALL_ORIGINS = True
 
@@ -227,10 +226,8 @@ CORS_ALLOWED_ORIGINS = [os.environ.get('CORS_ALLOWED_ORIGINS')]
 CSRF_COOKIE_NAME = "csrftoken"
 CSRF_COOKIE_SECURE = True
 CORS_ALLOW_CREDENTIALS = True
-CSRF_COOKIE_HTTPONLY = False
-CSRF_TRUSTED_ORIGINS = [os.environ.get('CORS_ALLOWED_ORIGINS'),
-                        "https://*.ngrok-free.app"
-                        ]
+CSRF_COOKIE_HTTPONLY = True
+CSRF_TRUSTED_ORIGINS = [os.environ.get('CORS_ALLOWED_ORIGINS')]
 
 
 

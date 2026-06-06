@@ -19,8 +19,10 @@ from django.urls import path
 from store.views import *
 from store.models import *
 from store.serializers import *
-from store.loyalClient import ActivateClientView, SignUpClientView, SignInClientView
 from store.tests import youcanpay_webhook
+from store.tests import *
+from .client_profile import *
+from .payment import *
 
 urlpatterns = [
     #path('ip', get_ip, name='get_ip'),
@@ -36,8 +38,13 @@ urlpatterns = [
     path('reviews/add/', add_review),
     path('reviews/get', get_reviews),
     path('orders/check', check_order),
-    path('client/signup', SignUpClientView.as_view()),
-    path('client/signin', SignInClientView.as_view()),
-    path('client/activate/<str:activation_code>/', ActivateClientView.as_view()),
-    path('send_mail/', envoyer_email)
+    path('client/signup/',                          SignUpClientView.as_view()),
+    path('client/activate/<uuid:activation_code>/', ActivateClientView.as_view()),
+    path('client/signin/',                          SignInClientView.as_view()),
+    path('client/me/',                              MeClientView.as_view()),
+    path('client/refresh/',                         RefreshClientTokenView.as_view()),
+    path('client/signout/',                         SignOutClientView.as_view()),
+    path('client/orders/',                          ClientOrdersView.as_view()),
+    path('send_mail/', envoyer_email),
+
 ]

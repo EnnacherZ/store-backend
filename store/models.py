@@ -1,10 +1,12 @@
 from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
+from django.contrib.auth import get_user_model
 import os, json, uuid
 from threading import Lock
 from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
-from django.contrib.auth.hashers import make_password, check_password
 # Create your models here.
+
+User = get_user_model()
 
 base_dir = os.path.dirname(os.path.dirname(__file__))
 
@@ -79,6 +81,26 @@ class ProductReview(models.Model):
     stars   = models.IntegerField(validators=[MinValueValidator(0), MaxValueValidator(5)])
     date    = models.DateTimeField(auto_now_add=True,)
  
+
+class ClientProfile(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="client_profile"
+    )
+
+    address = models.TextField(blank=True, default="")
+    phone = models.CharField(max_length=20, blank=True, null=True)
+
+    creation_date = models.DateTimeField(auto_now_add=True)
+
+    activation_date = models.DateTimeField(null=True, blank=True)
+    activation_code = models.UUIDField(default=uuid.uuid4, unique=True)
+
+    def __str__(self):
+        return self.user.get_full_name()
+    
+
  
 class Client(models.Model):
     first_name = models.CharField(max_length=100)
@@ -89,10 +111,21 @@ class Client(models.Model):
     address    = models.CharField(max_length=100)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
  
+    # ← NEW: link to registered account (null = guest order)
+    profile    = models.ForeignKey(
+        ClientProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders_as_client',
+    )
+
     def __str__(self):
         return "%s %s" % (self.first_name, self.last_name)
  
- 
+
+
+
 class Order(models.Model):
     client         = models.ForeignKey(Client, on_delete=models.CASCADE)
     order_id       = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
@@ -137,7 +170,7 @@ class OrderedProduct(models.Model):
     name         = models.CharField(max_length=50)
     price        = models.FloatField(validators=[MinValueValidator(0)])
     available    = models.BooleanField(default=True)
-    exception_id = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
+    exception_id = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True, null=True)
  
     # True  = stock has been physically deducted (confirmed/COD)
     # False = still just reserved (pending online payment)
@@ -159,24 +192,3 @@ class QuantityExceptions(models.Model):
     delta_quantity   = models.PositiveIntegerField()
     treated          = models.BooleanField(default=False)
 
-
-class LoyalClient(models.Model):
-    email = models.EmailField(unique=True)
-    password = models.CharField(max_length=255)
-    last_name = models.CharField(max_length=255)
-    first_name = models.CharField(max_length=255)
-    address = models.TextField()
-    phone = models.CharField(max_length=20, null=True, blank=True)
-    creation_date = models.DateTimeField(auto_now_add=True)
-    is_active = models.BooleanField(default=False)  # Pour vérifier si le client est activé
-    activation_date = models.DateTimeField(null=True, blank=True)
-    activation_code = models.UUIDField(default = uuid.uuid4, unique=True)
-
-    def set_password(self, password):
-        self.password = make_password(password)
-
-    def check_password(self, password):
-        return check_password(password, self.password)
-
-    def __str__(self):
-        return f'{self.first_name} {self.last_name}'

@@ -11,3 +11,8 @@ class IsManager(BasePermission):
 class IsDeliveryMan(BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role in ['delivery', 'admin']
+    
+
+class IsClient(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == 'client'
