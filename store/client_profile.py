@@ -317,3 +317,102 @@ class ClientOrdersView(APIView):
         ]
 
         return Response(data, status=status.HTTP_200_OK)
+    
+
+"""
+api/client/views.py  (relevant section)
+
+PATCH /api/client/me/update/
+
+Accepts: { first_name, last_name, phone, address }
+Updates AuthUser.first_name / last_name and ClientProfile.phone / address
+in a single atomic transaction so the two models are never half-updated.
+
+Auth: ClientCookieJWTAuthentication + IsAuthenticated + IsClientUser
+      (same pattern used by the rest of your client API views)
+"""
+
+from django.db import transaction
+from rest_framework import serializers, status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from store.models import ClientProfile                      # adjust import path
+
+
+# ── Serializer ────────────────────────────────────────────────────────────────
+
+class UpdateProfileSerializer(serializers.Serializer):
+    first_name = serializers.CharField(max_length=150, required=False)
+    last_name  = serializers.CharField(max_length=150, required=False)
+    phone      = serializers.CharField(max_length=20,  required=False, allow_blank=True)
+    address    = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError("No fields provided.")
+        return attrs
+
+
+# ── View ──────────────────────────────────────────────────────────────────────
+
+class UpdateClientProfileView(APIView):
+    """
+    PATCH /api/client/me/update/
+
+    Partial update: only the fields present in the request body are changed.
+    Atomically writes to both AuthUser and ClientProfile.
+    """
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes     = [IsAuthenticated, IsClient]
+
+    def patch(self, request):
+        serializer = UpdateProfileSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+
+        try:
+            with transaction.atomic():
+                user = request.user
+
+                # ── AuthUser fields ───────────────────────────────────────
+                user_dirty = False
+                if "first_name" in data:
+                    user.first_name = data["first_name"]
+                    user_dirty = True
+                if "last_name" in data:
+                    user.last_name = data["last_name"]
+                    user_dirty = True
+                if user_dirty:
+                    user.save(update_fields=["first_name", "last_name"])
+
+                # ── ClientProfile fields ──────────────────────────────────
+                # get_or_create guards against a missing profile row
+                profile, _ = ClientProfile.objects.get_or_create(user=user)
+                profile_dirty = False
+                if "phone" in data:
+                    profile.phone = data["phone"]
+                    profile_dirty = True
+                if "address" in data:
+                    profile.address = data["address"]
+                    profile_dirty = True
+                if profile_dirty:
+                    profile.save(update_fields=["phone", "address"])
+
+        except Exception as exc:
+            return Response(
+                {"detail": f"Update failed: {exc}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Return the refreshed user data so the frontend can update its cache
+        return Response({
+            "first_name": user.first_name,
+            "last_name":  user.last_name,
+            "email":      user.email,
+            "phone":      profile.phone,
+            "address":    profile.address,
+        }, status=status.HTTP_200_OK)

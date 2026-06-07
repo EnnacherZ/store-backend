@@ -88,9 +88,11 @@ class ClientProfile(models.Model):
         on_delete=models.CASCADE,
         related_name="client_profile"
     )
-
-    address = models.TextField(blank=True, default="")
-    phone = models.CharField(max_length=20, blank=True, null=True)
+    
+    city           = models.CharField(max_length=50, default="")
+    address        = models.TextField(blank=True, default="")
+    phone          = models.CharField(max_length=20, blank=True, null=True)
+    loyalty_points = models.PositiveIntegerField(default=0)
 
     creation_date = models.DateTimeField(auto_now_add=True)
 

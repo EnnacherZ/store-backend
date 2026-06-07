@@ -42,6 +42,7 @@ urlpatterns = [
     path('client/activate/<uuid:activation_code>/', ActivateClientView.as_view()),
     path('client/signin/',                          SignInClientView.as_view()),
     path('client/me/',                              MeClientView.as_view()),
+    path('client/me/update/',                       UpdateClientProfileView.as_view()),
     path('client/refresh/',                         RefreshClientTokenView.as_view()),
     path('client/signout/',                         SignOutClientView.as_view()),
     path('client/orders/',                          ClientOrdersView.as_view()),
