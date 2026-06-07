@@ -22,53 +22,101 @@ from django.template.loader import render_to_string
 
 
 @csrf_exempt
+
+
+# ── Settings contract ──────────────────────────────────────────────────────────
+#
+# Add these to your settings.py (or settings/prod.py):
+#
+#   EMAIL_HOST_USER     = "you@gmail.com"
+#   EMAIL_HOST_PASSWORD = "your-app-password"
+#
+#   COMPANY_NAME        = "Al Firdaous Store"
+#   COMPANY_TAGLINE     = "Premium Footwear"
+#   COMPANY_LOGO_URL    = "https://yourdomain.com/static/logo.png"  # absolute URL
+#   COMPANY_ADDRESS     = "123 Rue Mohammed V, Casablanca, Maroc"
+#   COMPANY_WEBSITE     = "https://yourdomain.com"
+#
+#   SOCIAL_FACEBOOK     = "https://facebook.com/yourpage"
+#   SOCIAL_INSTAGRAM    = "https://instagram.com/yourpage"
+#   SOCIAL_TIKTOK       = "https://tiktok.com/@yourpage"
+#   SOCIAL_TWITTER      = "https://x.com/yourhandle"
+#   SOCIAL_LINKEDIN     = "https://linkedin.com/company/yourpage"
+#   SOCIAL_YOUTUBE      = "https://youtube.com/@yourchannel"
+#
+#   UNSUBSCRIBE_URL     = "https://yourdomain.com/unsubscribe/"
+#
+# Any setting left undefined silently defaults to "" (icon not rendered).
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _company_context(request) -> dict:
+    """
+    Build the branding + social block from settings.
+    Called once per email send — centralises all setting reads.
+    """
+    def s(key, default=""):
+        return getattr(settings, key, default)
+
+    return {
+        # Branding
+        "company_name":     s("COMPANY_NAME",    "Your Company"),
+        "company_tagline":  s("COMPANY_TAGLINE", ""),
+        "company_logo_url": s("COMPANY_LOGO_URL", ""),
+        "company_address":  s("COMPANY_ADDRESS",  ""),
+        "company_website":  s("COMPANY_WEBSITE",  ""),
+
+        # Social — only rendered in the template when non-empty
+        "social_facebook":  s("SOCIAL_FACEBOOK"),
+        "social_instagram": s("SOCIAL_INSTAGRAM"),
+        "social_tiktok":    s("SOCIAL_TIKTOK"),
+        "social_twitter":   s("SOCIAL_TWITTER"),
+        "social_linkedin":  s("SOCIAL_LINKEDIN"),
+        "social_youtube":   s("SOCIAL_YOUTUBE"),
+
+        # Footer
+        "unsubscribe_url":  s("UNSUBSCRIBE_URL"),
+    }
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
 def envoyer_email(request):
     """
     POST /api/envoyer-email/
 
-    Required fields:
+    Required POST fields:
         subject         str   — Email subject line
         body            str   — Plain-text / main message body
         to              str   — Recipient(s), comma-separated
-        customer_name   str   — Recipient's display name (shown in greeting)
+        customer_name   str   — Recipient display name shown in greeting
 
-    Optional fields:
+    Optional POST fields:
         cc              str   — CC addresses, comma-separated
         bcc             str   — BCC addresses, comma-separated
         file            file  — Attachment (multipart/form-data)
 
-        reference_number str  — Order / ticket / ref number shown in info card
+        reference_number str  — Order / invoice / ticket ref shown in info card
         cta_url          str  — Call-to-action button URL
-        cta_label        str  — Call-to-action button label (default: "View Details →")
+        cta_label        str  — CTA button label (default: "View Details →")
 
-        company_name     str  — Sender company name   (default: settings.COMPANY_NAME)
-        company_tagline  str  — Tagline under logo     (default: settings.COMPANY_TAGLINE)
-        company_logo_url str  — Absolute URL to logo   (default: settings.COMPANY_LOGO_URL)
-        company_address  str  — Footer address          (default: settings.COMPANY_ADDRESS)
-
-        unsubscribe_url  str  — Unsubscribe link in footer
-        social_facebook  str  — Facebook URL
-        social_twitter   str  — Twitter/X URL
-        social_linkedin  str  — LinkedIn URL
-        social_instagram str  — Instagram URL
+    Branding and social links are never accepted from the request —
+    they are always read from Django settings (see _company_context above).
     """
-    if request.method != "POST":
-        return JsonResponse({"error": "Only POST allowed"}, status=405)
-
     try:
         # ── Required fields ────────────────────────────────────────────────
         subject       = request.POST.get("subject", "").strip()
         body          = request.POST.get("body", "").strip()
         to            = request.POST.get("to", "").strip()
-        customer_name = request.POST.get("customer_name", "").strip()
+        #customer_name = request.POST.get("customer_name", "").strip()
 
-        # if not subject or not body or not to or not customer_name:
-        #     return JsonResponse(
-        #         {"error": "Missing required fields: subject, body, to, customer_name"},
-        #         status=400,
-        #     )
+        if not subject or not body or not to :
+            return JsonResponse(
+                {"error": "Missing required fields: subject, body, to, customer_name"},
+                status=400,
+            )
 
-        # ── Optional fields ────────────────────────────────────────────────
+        # ── Optional per-email fields ──────────────────────────────────────
         cc   = request.POST.get("cc", "")
         bcc  = request.POST.get("bcc", "")
         file = request.FILES.get("file")
@@ -77,45 +125,28 @@ def envoyer_email(request):
         cta_url          = request.POST.get("cta_url", "")
         cta_label        = request.POST.get("cta_label", "View Details →")
 
-        company_name     = request.POST.get("company_name",    getattr(settings, "COMPANY_NAME",    "Your Company"))
-        company_tagline  = request.POST.get("company_tagline", getattr(settings, "COMPANY_TAGLINE", "Premium Experience"))
-        company_logo_url = request.POST.get("company_logo_url",getattr(settings, "COMPANY_LOGO_URL",""))
-        company_address  = request.POST.get("company_address", getattr(settings, "COMPANY_ADDRESS", ""))
-
-        unsubscribe_url  = request.POST.get("unsubscribe_url", "")
-        social_facebook  = request.POST.get("social_facebook", "")
-        social_twitter   = request.POST.get("social_twitter",  "")
-        social_linkedin  = request.POST.get("social_linkedin",  "")
-        social_instagram = request.POST.get("social_instagram", "")
-
         # ── Recipient lists ────────────────────────────────────────────────
         to_list  = [e.strip() for e in to.split(",")  if e.strip()]
         cc_list  = [e.strip() for e in cc.split(",")  if e.strip()]
         bcc_list = [e.strip() for e in bcc.split(",") if e.strip()]
         all_recipients = to_list + cc_list + bcc_list
 
-        # ── Render HTML template ───────────────────────────────────────────
-        html_content = render_to_string(
-            "email_template.html",
-            {
-                "subject":          subject,
-                "body":             body,
-                "customer_name":    customer_name,
-                "reference_number": reference_number,
-                "cta_url":          cta_url,
-                "cta_label":        cta_label,
-                "company_name":     company_name,
-                "company_tagline":  company_tagline,
-                "company_logo_url": company_logo_url,
-                "company_address":  company_address,
-                "unsubscribe_url":  unsubscribe_url,
-                "social_facebook":  social_facebook,
-                "social_twitter":   social_twitter,
-                "social_linkedin":  social_linkedin,
-                "social_instagram": social_instagram,
-                "current_year":     datetime.datetime.now,
-            },
-        )
+        # ── Build template context ─────────────────────────────────────────
+        context = {
+            # Per-email fields (from request)
+            "subject":          subject,
+            "body":             body,
+           # "customer_name":    customer_name,
+            "reference_number": reference_number,
+            "cta_url":          cta_url,
+            "cta_label":        cta_label,
+            "current_year":     datetime.datetime.now().year,
+
+            # Global branding + socials (always from settings, never from request)
+            **_company_context(request),
+        }
+
+        html_content = render_to_string("email_template.html", context)
 
         # ── Build MIME message ─────────────────────────────────────────────
         sender_email = settings.EMAIL_HOST_USER
@@ -146,7 +177,6 @@ def envoyer_email(request):
 
     except Exception as e:
         traceback.print_exc()
-        print(e)
         return JsonResponse({"error": str(e)}, status=500)
 
 
@@ -358,48 +388,60 @@ def get_products(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def check_order(request):
+    order_id = request.GET.get('orderID', '').strip()
+    if not order_id:
+        return JsonResponse({'found': False, 'error': False}, status=200)
+
     try:
-        order_id = request.GET.get('orderID')
-        the_order = Order.objects.prefetch_related('ordered_products').select_related('client').get(order_id=order_id)
-        serialized_order = OrderSerializer(the_order, many=False)
-        client = serialized_order.data['client']
+        the_order = (
+            Order.objects
+            .prefetch_related('ordered_products')
+            .select_related('client')
+            .get(order_id=order_id)
+        )
+        client = the_order.client
         products = [
             {
-                'name': item.name,
-                'ref': item.ref,
-                'category': item.category,
-                'product_type': item.product_type,
-                'size': item.size,
-                'quantity': item.quantity,
-                'price': item.price,
+                'name':         op.name,
+                'ref':          op.ref,
+                'category':     op.category,
+                'product_type': op.product_type,
+                'size':         op.size,
+                'quantity':     op.quantity,
+                'price':        op.price,
             }
-            for item in the_order.ordered_products.all()
+            for op in the_order.ordered_products.all()
         ]
-        return JsonResponse(
-            {
-                'state': the_order.status,
-                'found': True,
-                'error': False,
-                'client': client,
-                'order': {
-                    'order_id': str(the_order.order_id),
-                    'amount': the_order.amount,
-                    'currency': the_order.currency,
-                    'is_paid': the_order.is_paid,
-                    'payment_mode': 'online' if the_order.payment_mode else 'cash_on_delivery',
-                    'delivered': the_order.delivered,
-                    'status': the_order.status,
-                    'date': the_order.date,
-                    'products': products,
-                },
+        return JsonResponse({
+            'found': True,
+            'error': False,
+            'client': {
+                'first_name': client.first_name,
+                'last_name':  client.last_name,
+                'city':       client.city,
+                'phone':      client.phone,
+                'email':      client.email,
             },
-            status=200,
-        )
+            'order': {
+                'order_id':       str(the_order.order_id),
+                'amount':         the_order.amount,
+                'currency':       the_order.currency,
+                'is_paid':        the_order.is_paid,
+                'payment_mode':   'online' if the_order.payment_mode else 'cash_on_delivery',
+                'delivered':      the_order.delivered,
+                'status':         the_order.status,
+                # ← FIX: was serializing DateTimeField as object, now ISO string
+                'date':           the_order.date.isoformat() if the_order.date else None,
+                'transaction_id': the_order.transaction_id,
+                'products':       products,
+            },
+        }, status=200)
+
     except Order.DoesNotExist:
         return JsonResponse({'found': False, 'error': False}, status=200)
     except Exception:
-        return JsonResponse({'error': True}, status=500)
-
+        import traceback; traceback.print_exc()
+        return JsonResponse({'error': True, 'found': False}, status=500)
 
 
 

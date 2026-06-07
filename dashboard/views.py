@@ -1,520 +1,446 @@
+import os, json, traceback
+from threading import Lock
+
 from django.contrib.auth import get_user_model
-from .permissions import IsAdmin, IsDeliveryMan, IsManager
+from django.http import JsonResponse, HttpResponseForbidden
+from django.db.models import F
+from django.conf import settings
+
+from rest_framework import generics, status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
-from rest_framework.views import APIView
-from rest_framework import generics
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.decorators import api_view, permission_classes
+
 from dotenv import load_dotenv
-from rest_framework import status
-from rest_framework.response import Response
-from django.http import JsonResponse, HttpResponseForbidden
-from .serializers import *
-from store.models import *
-from store.serializers import *
-import os, json
-from threading import Lock
-from django.conf import settings
-from django.db.models import F
 
-import traceback
+from .authentication import DashboardCookieJWTAuthentication
+from .permissions import IsAdmin, IsDeliveryMan, IsDashboardUser, IsManager
+from .serializers import CustomTokenObtainPairSerializer, UserSerializer
+from store.models import (
+    Product, ProductStock, Order, OrderedProduct, QuantityExceptions,
+)
+from store.serializers import (
+    ProductSerializer, ProductStockSerializer, OrderSerializer,
+    QuantityExceptionsSerializer,
+)
+from store.views import get_products          # public endpoint, reused
 
-class RefreshTokenCookieVieww(APIView):
-    permission_classes = [AllowAny]  # 👈 THIS IS CRITICAL
-
-    def post(self, request):
-        try:
-            refresh_token = request.COOKIES.get('refresh_token')
-            print("Refresh Token:", refresh_token)
-
-            if not refresh_token:
-                return Response({'detail': 'Refresh token missing'}, status=400)
-
-            token = RefreshToken(refresh_token)
-            access_token = str(token.access_token)
-
-            response = Response({'message': 'Token refreshed'})
-            response.set_cookie(
-                key='access_token',
-                value=access_token,
-                httponly=True,
-                secure=True,
-                samesite='None',
-                max_age=300,
-            )
-            return response
-
-        except TokenError as e:
-            print("❌ Token error:", str(e))
-            traceback.print_exc()
-            return Response({'detail': 'Invalid refresh token'}, status=401)
-
-        except Exception as e:
-            print("❌ Unexpected error:", str(e))
-            traceback.print_exc()
-            return Response({'detail': 'Server error'}, status=500)
-
-
-# Create your views here.
+load_dotenv()
 
 User = get_user_model()
 
-load_dotenv()
-allowed_origins = os.environ.get('REQUEST_ALLOWED_ORIGINS')
-forbbiden_message = 'Forbidden-Acces denied'
-def permission(): return IsAuthenticated
-ALLOWED_ORIGINS = [allowed_origins]
-def origin_checker(request):
-    referer = request.META.get('HTTP_REFERER','')
-    if referer in ALLOWED_ORIGINS: return False
-    else : return True
+allowed_origins   = os.environ.get('REQUEST_ALLOWED_ORIGINS', '')
+ALLOWED_ORIGINS   = {allowed_origins}
+forbidden_message = 'Forbidden — access denied'
+
+DASHBOARD_ROLES = frozenset({'admin', 'manager', 'delivery'})
 
 
+def origin_checker(request) -> bool:
+    """Return True when the referer is NOT the allowed frontend origin."""
+    referer = request.META.get('HTTP_REFERER', '')
+    return referer not in ALLOWED_ORIGINS
 
 
+# ─── Auth ─────────────────────────────────────────────────────────────────────
+
+class RefreshTokenCookieView(APIView):
+    """Rotate the access cookie using the refresh cookie."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        refresh_str = request.COOKIES.get('refresh_token')
+        if not refresh_str:
+            return Response({'detail': 'Refresh token missing.'}, status=400)
+        try:
+            token        = RefreshToken(refresh_str)
+            access_token = str(token.access_token)
+        except TokenError:
+            return Response({'detail': 'Invalid or expired refresh token.'}, status=401)
+
+        response = Response({'message': 'Token refreshed.'})
+        response.set_cookie(
+            key='access_token', value=access_token,
+            httponly=True, secure=True, samesite='None',
+            max_age=3600 * 8, path='/',
+        )
+        return response
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
+    """
+    Dashboard login.
+    Clients are explicitly rejected — they must use /api/client/signin/.
+    """
     serializer_class = CustomTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        user = serializer.user
+
+        # ── Block client role from obtaining dashboard tokens ─────────────
+        if getattr(user, 'role', None) not in DASHBOARD_ROLES:
+            return Response(
+                {'error': 'Accès refusé.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         tokens = serializer.validated_data
-
-        refresh = tokens['refresh']
-        access = tokens['access']
-
         res = Response({
-            "message": "Login successful",
-            "user": {
-                "username": serializer.user.username,
-                "role": serializer.user.role,
-                "first_name": serializer.user.first_name,
-                "last_name": serializer.user.last_name,
-                "image": serializer.user.image.url if serializer.user.image else None
+            'message': 'Login successful',
+            'user': {
+                'username':   user.username,
+                'role':       user.role,
+                'first_name': user.first_name,
+                'last_name':  user.last_name,
+                'image':      user.image.url if user.image else None,
             }
         }, status=status.HTTP_200_OK)
 
-        cookie_max_age = 3600 * 24  # 1 day
-
-        res.set_cookie(
-            key='access_token',
-            value=str(access),
-            httponly=True,
-            secure=True,
-            samesite='None',
-            max_age=cookie_max_age,
-            # domain= 'localhost'
-            
-        )
-        res.set_cookie(
-            key='refresh_token',
-            value=str(refresh),
-            httponly=True,
-            secure= True,
-            samesite='None',
-            max_age=cookie_max_age,
-            # domain= 'localhost'
-            
-        )
-
+        cookie_opts = dict(httponly=True, secure=True, samesite='None', path='/')
+        res.set_cookie('access_token',  str(tokens['access']),  max_age=3600 * 8,  **cookie_opts)
+        res.set_cookie('refresh_token', str(tokens['refresh']), max_age=3600 * 24, **cookie_opts)
         return res
-
-
-class CustomAppTokenObtainPairView(TokenObtainPairView):
-    serializer_class = CustomTokenObtainPairSerializer
-
 
 
 class LogoutView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request):
-        res = Response({'message': 'Logged out'})
-
-        # S'assurer que le path et samesite correspondent à ceux utilisés dans set_cookie
-        res.delete_cookie(
-            key='access_token',
-            samesite='None',
-        )
-        res.delete_cookie(
-            key='refresh_token',
-            samesite='None',
-        )
-
+        res = Response({'message': 'Logged out.'})
+        res.delete_cookie('access_token',  samesite='None', path='/')
+        res.delete_cookie('refresh_token', samesite='None', path='/')
         return res
-    
+
+
 class CheckAuthView(APIView):
-    permission_classes = [IsAuthenticated]
+    """
+    Used by the React dashboard to restore session on mount.
+    DashboardCookieJWTAuthentication already rejects client tokens.
+    """
+    authentication_classes = [DashboardCookieJWTAuthentication]
+    permission_classes     = [IsAuthenticated]
 
     def get(self, request):
+        u = request.user
         return Response({
             'message': 'Authenticated',
             'user': {
-                'username': request.user.username,
-                'email': request.user.email,
-                'first_name': request.user.first_name,
-                'last_name': request.user.last_name,
-            }
+                'username':   u.username,
+                'email':      u.email,
+                'first_name': u.first_name,
+                'last_name':  u.last_name,
+                'role':       u.role,
+                'image':      u.image.url if u.image else None,
+            },
         }, status=200)
 
 
+# ─── User management ──────────────────────────────────────────────────────────
+
 class CreateUserView(generics.CreateAPIView):
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
+    queryset           = User.objects.all()
+    serializer_class   = UserSerializer
+    authentication_classes = [DashboardCookieJWTAuthentication]
     permission_classes = [IsAuthenticated, IsAdmin]
 
 
+# ─── Products ─────────────────────────────────────────────────────────────────
 
 class ProductViewSet(generics.ListCreateAPIView):
-    queryset = Product.objects.all()
-    serializer_class = ProductSerializer
-    permission_classes = [permission()]
-    parser_classes = (MultiPartParser, FormParser)
+    queryset               = Product.objects.all()
+    serializer_class       = ProductSerializer
+    authentication_classes = [DashboardCookieJWTAuthentication]
+    permission_classes     = [IsAuthenticated, IsManager]
+    parser_classes         = (MultiPartParser, FormParser)
 
 
 class ProductManager(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Product.objects.all()
-    serializer_class = ProductSerializer
-    permission_classes = [permission()]
-    parser_classes = (MultiPartParser, FormParser)
+    queryset               = Product.objects.all()
+    serializer_class       = ProductSerializer
+    authentication_classes = [DashboardCookieJWTAuthentication]
+    permission_classes     = [IsAuthenticated, IsManager]
+    parser_classes         = (MultiPartParser, FormParser)
 
 
 class ProductStockViewSet(generics.ListCreateAPIView):
-    queryset = ProductStock.objects.all()
-    serializer_class = ProductStockSerializer
-    permission_classes = [permission()]
-    parser_classes = (MultiPartParser, FormParser)
+    queryset               = ProductStock.objects.all()
+    serializer_class       = ProductStockSerializer
+    authentication_classes = [DashboardCookieJWTAuthentication]
+    permission_classes     = [IsAuthenticated, IsManager]
+    parser_classes         = (MultiPartParser, FormParser)
+
+
+# ─── Orders ───────────────────────────────────────────────────────────────────
 
 class OrderViewSet(generics.ListCreateAPIView):
-    queryset = Order.objects.all()
-    serializer_class = OrderSerializer
-    permission_classes = [permission()]
-    parser_classes = (MultiPartParser, FormParser)   
+    queryset               = Order.objects.all()
+    serializer_class       = OrderSerializer
+    authentication_classes = [DashboardCookieJWTAuthentication]
+    permission_classes     = [IsAuthenticated, IsDashboardUser]
+    parser_classes         = (MultiPartParser, FormParser)
+
 
 class OrderManager(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Order.objects.all()
-    serializer_class = OrderSerializer
-    permission_classes = [permission()]
-    parser_classes = (MultiPartParser, FormParser)  
+    queryset               = Order.objects.all()
+    serializer_class       = OrderSerializer
+    authentication_classes = [DashboardCookieJWTAuthentication]
+    permission_classes     = [IsAuthenticated, IsDashboardUser]
+    parser_classes         = (MultiPartParser, FormParser)
+
 
 class QuantityExceptionsManager(generics.RetrieveUpdateDestroyAPIView):
-    queryset = QuantityExceptions.objects.all()
-    serializer_class = QuantityExceptionsSerializer
-    permission_classes = [permission()]
-    parser_classes = (MultiPartParser, FormParser) 
+    queryset               = QuantityExceptions.objects.all()
+    serializer_class       = QuantityExceptionsSerializer
+    authentication_classes = [DashboardCookieJWTAuthentication]
+    permission_classes     = [IsAuthenticated, IsManager]
+    parser_classes         = (MultiPartParser, FormParser)
 
 
-
-    # def partial_update(self, request, *args, **kwargs):
-    #     instance = self.get_object()
-
-    #     # Upload conditionnel pour pdf_invoice
-    #     if 'invoice' in request.FILES:
-    #         result_invoice = upload(request.FILES['invoice'], resource_type='raw')
-    #         instance.invoice = result_invoice['secure_url']
-
-    #     # Upload conditionnel pour pdf_receipt
-    #     if 'delivery_form' in request.FILES:
-    #         result_delivery_form= upload(request.FILES['delivery_form'], resource_type='raw')
-    #         instance.delivery_form = result_delivery_form['secure_url']
-
-    #     instance.save()
-    #     return super().partial_update(request, *args, **kwargs)
-
+# ─── Function-based dashboard views ───────────────────────────────────────────
 
 @api_view(['GET'])
-@permission_classes([permission()])
+@permission_classes([IsAuthenticated, IsDashboardUser])
 def db_get_orders(request):
-    if origin_checker(request):return HttpResponseForbidden(forbbiden_message)
+    if origin_checker(request):
+        return HttpResponseForbidden(forbidden_message)
     try:
-        queryset = Order.objects.filter(status = False, waiting = False).order_by('-exception')
-        querySerializer = OrderSerializer(queryset, many=True)
-        return JsonResponse({"orders":querySerializer.data}, status = status.HTTP_200_OK)
+        qs = Order.objects.filter(status=False, waiting=False).order_by('-exception')
+        return JsonResponse({'orders': OrderSerializer(qs, many=True).data}, status=200)
     except Exception as e:
-        print(e)
-        return JsonResponse({"message" : f"An error occured: {str(e)}"}, status = status.HTTP_400_BAD_REQUEST)
-    
+        return JsonResponse({'message': f'Error: {e}'}, status=400)
+
 
 @api_view(['GET'])
-@permission_classes([permission()])
+@permission_classes([IsAuthenticated, IsDashboardUser])
 def get_deficiencies(request):
-    if origin_checker(request):return HttpResponseForbidden(forbbiden_message)
+    if origin_checker(request):
+        return HttpResponseForbidden(forbidden_message)
     try:
-        queryset = QuantityExceptions.objects.filter(treated = False)
-        querySerializer = QuantityExceptionsSerializer(queryset, many = True)
-        return JsonResponse({"deficiencies":querySerializer.data}, status = status.HTTP_200_OK)
+        qs = QuantityExceptions.objects.filter(treated=False)
+        return JsonResponse({'deficiencies': QuantityExceptionsSerializer(qs, many=True).data}, status=200)
     except Exception as e:
-        print(e)
-        return JsonResponse({"message" : f"An error occured: {str(e)}"}, status = status.HTTP_400_BAD_REQUEST)
-    
+        return JsonResponse({'message': f'Error: {e}'}, status=400)
+
 
 @api_view(['POST'])
-@permission_classes([permission()])
+@permission_classes([IsAuthenticated, IsManager])
 def updateProductStock(request):
     if origin_checker(request):
-        return HttpResponseForbidden(forbbiden_message)
-
+        return HttpResponseForbidden(forbidden_message)
     try:
-        data = request.data  # 🔥 DRF gère déjà le JSON
+        data     = request.data
+        pid      = data.get('productId')
+        size     = data.get('size')
+        quantity = data.get('quantity')
 
-        pid = data.get("productId")
-        size = data.get("size")
-        quantity = data.get("quantity")
-
-        # ✅ validations
         if not all([pid, size, quantity]):
-            return JsonResponse(
-                {"message": "Missing required fields"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'message': 'Missing required fields.'}, status=400)
 
-        try:
-            pid = int(pid)
-            quantity = int(quantity)
-        except ValueError:
-            return Response(
-                {"message": "Invalid id or quantity"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        pid      = int(pid)
+        quantity = int(quantity)
 
-        # 🔹 récupérer le produit
-        product = Product.objects.get(
-            id=pid,
+        product = Product.objects.get(id=pid)
+        stock, created = ProductStock.objects.get_or_create(
+            product=product, size=size,
+            defaults={'quantity': quantity},
         )
-
-        # 🔹 stock
-        product_stock, created = ProductStock.objects.get_or_create(
-            product=product,
-            size=size,
-            defaults={'quantity': quantity}
-        )
-
         if not created:
-            product_stock.quantity = F("quantity") + quantity
-            product_stock.save()
+            stock.quantity = F('quantity') + quantity
+            stock.save()
 
-        return Response(
-            {"message": "Stock updated successfully"},
-            status=status.HTTP_200_OK
-        )
+        return Response({'message': 'Stock updated.'}, status=200)
 
     except Product.DoesNotExist:
-        return Response(
-            {"message": "Product not found"},
-            status=status.HTTP_404_NOT_FOUND
-        )
-
+        return Response({'message': 'Product not found.'}, status=404)
     except Exception as e:
-        print(e)
-        return JsonResponse(
-            {"message": f"An error occurred: {str(e)}"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
+        return JsonResponse({'message': f'Error: {e}'}, status=500)
 
 
 @api_view(['POST'])
-@permission_classes([permission()])
+@permission_classes([IsAuthenticated, IsManager])
 def process_deficiency(request):
-    data = json.loads(request.body)
-    exception_id = data.get('exceptionID')
-    order_id = data.get('orderID')
-    quantity_exception = QuantityExceptions.objects.get(exception_id = exception_id)
-    ordered_product = OrderedProduct.objects.get(exception_id = exception_id)
-    the_order = Order.objects.get(order_id = order_id)
-    quantity_exception.treated = True;ordered_product.available = True;the_order.exception = False
-    quantity_exception.save();ordered_product.save();the_order.save()
-    return JsonResponse({"message": 'ok'}, status = status.HTTP_200_OK)
+    try:
+        data         = json.loads(request.body)
+        exception_id = data.get('exceptionID')
+        order_id     = data.get('orderID')
+
+        exc     = QuantityExceptions.objects.get(exception_id=exception_id)
+        op      = OrderedProduct.objects.get(exception_id=exception_id)
+        order   = Order.objects.get(order_id=order_id)
+
+        exc.treated       = True
+        op.available      = True
+        order.exception   = False
+
+        exc.save()
+        op.save()
+        order.save()
+
+        return JsonResponse({'message': 'ok'}, status=200)
+    except Exception as e:
+        return JsonResponse({'message': f'Error: {e}'}, status=400)
 
 
+# ─── Product parameters (stored in parameters.json) ───────────────────────────
 
-# Fichier parameters.json
 PARAMS_PATH = os.path.join(os.path.dirname(__file__), 'parameters.json')
-file_lock = Lock()
+_file_lock  = Lock()
 
-def load_params():
-    with file_lock, open(PARAMS_PATH, 'r', encoding='utf-8') as f:
+
+def _load_params():
+    with _file_lock, open(PARAMS_PATH, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-def save_params(data):
-    with file_lock, open(PARAMS_PATH, 'w', encoding='utf-8') as f:
+
+def _save_params(data):
+    with _file_lock, open(PARAMS_PATH, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-@api_view(['POST'])
-@permission_classes([permission()])
-def add_product_parameters(request):
-    try:
-        data = json.loads(request.body)
-
-        type_ = data.get("productType")
-        param = data.get("param")
-        values = data.get("values")
-
-        if not isinstance(param, str) or not isinstance(type_, str):
-            raise ValueError("param and productType must be strings.")
-
-        if not isinstance(values, list):
-            raise ValueError("values must be a list.")
-
-        params = load_params()
-
-        if param in params:
-            if type_ in params[param]:
-                # S'assurer que c'est une liste de tuples
-                current_values = params[param][type_]
-                if not isinstance(current_values, list):
-                    current_values = []
-                for i in values:
-                    tup = (i, i)
-                    if tup not in current_values:
-                        current_values.append(tup)
-                params[param][type_] = current_values
-            else:
-                # Nouvelle liste de tuples
-                params[param][type_] = [(i, i) for i in values]
-
-        save_params(params)
-        return JsonResponse({"message": "ok!"}, status=status.HTTP_201_CREATED)
-    except Exception as e:
-        print(e)
-        return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-@api_view(['POST'])
-@permission_classes([permission()])
-def add_product_types(request):
-    try:
-        data = json.loads(request.body)
-        type_ = 'types'
-        values = data.get("values")
-
-        params = load_params()
-        if type_ in params:
-            for i in values:
-                if i not in params[type_]:
-                    params[type_].append(i)
-                if i not in params["categories"]:
-                    params["categories"][i] = []
-        else:
-            params[type_] = values
-
-
-        save_params(params)
-        return JsonResponse({"message": "ok!"}, status=status.HTTP_201_CREATED)
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_params(request):
-    categories = {}
+    """Public — used by the storefront to populate filters."""
     try:
-        params = load_params()
-        types_ = params["types"]
-        raw_categories = params["categories"]
-
-        for type_ in types_:
-            categories[type_] = []
-            for attribut in raw_categories[type_]:
-                if attribut:
-                    categories[type_].append(attribut[0])
-
-        return JsonResponse({
-            "types": types_,
-            "categories": categories
-        }, status=200)
-
+        params     = _load_params()
+        types_     = params.get('types', [])
+        raw_cats   = params.get('categories', {})
+        categories = {
+            t: [v[0] for v in raw_cats.get(t, []) if v]
+            for t in types_
+        }
+        return JsonResponse({'types': types_, 'categories': categories}, status=200)
     except Exception as e:
-        print(e)
-        return JsonResponse({"error": str(e)}, status=500)
-    
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsManager])
+def add_product_parameters(request):
+    try:
+        data   = json.loads(request.body)
+        type_  = data.get('productType')
+        param  = data.get('param')
+        values = data.get('values')
+
+        if not isinstance(param, str) or not isinstance(type_, str):
+            raise ValueError('param and productType must be strings.')
+        if not isinstance(values, list):
+            raise ValueError('values must be a list.')
+
+        params = _load_params()
+        if param in params:
+            current = params[param].setdefault(type_, [])
+            for v in values:
+                tup = (v, v)
+                if tup not in current:
+                    current.append(tup)
+        _save_params(params)
+        return JsonResponse({'message': 'ok!'}, status=201)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsManager])
+def add_product_types(request):
+    try:
+        data   = json.loads(request.body)
+        values = data.get('values', [])
+        params = _load_params()
+
+        for v in values:
+            if v not in params.setdefault('types', []):
+                params['types'].append(v)
+            params.setdefault('categories', {}).setdefault(v, [])
+
+        _save_params(params)
+        return JsonResponse({'message': 'ok!'}, status=201)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
 @api_view(['GET'])
-@permission_classes([permission()])
+@permission_classes([IsAuthenticated, IsManager])
 def get_products_types(request):
-    params = load_params()
-    values = params.get('types', [])
-    choices = [value for value in values]
-    return JsonResponse({f"types":choices}, status = status.HTTP_200_OK)
+    params = _load_params()
+    return JsonResponse({'types': params.get('types', [])}, status=200)
 
-
-# @api_view(['GET'])
-# @permission_classes([permission()])
-# def get_products_choices(request):
-#     params = load_params()
-
-#     querySet = Product.objects.filter(product_type = product_type)
-#     data = ProductSerializer(querySet, many = True).data
-#     return JsonResponse({"choices":data}, status= status.HTTP_200_OK)
 
 @api_view(['GET'])
-@permission_classes([permission()])
+@permission_classes([IsAuthenticated, IsManager])
 def get_product_stock_details(request):
     try:
-        pid = request.GET.get('productId')
+        pid     = request.GET.get('productId')
         product = Product.objects.get(id=pid)
-        serializer = ProductSerializer(product)
-        return JsonResponse({"data":serializer.data["stock"]}, status= status.HTTP_200_OK)
+        return JsonResponse({'data': ProductSerializer(product).data['stock']}, status=200)
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    
-@api_view(['GET'])
-@permission_classes([permission()])
-def get_orders(request):
-    try:
-        all_orders = Order.objects.filter(waiting  = False).order_by('-exception')
-        remaining_orders = Order.objects.filter(status = False, waiting=False).order_by('-exception')
-        waitin_delivery_orders = Order.objects.filter(status = True, waiting=False, delivered= False).order_by('-exception')
-        delivered_orders = Order.objects.filter(status=True, waiting=False, delivered= True).order_by('-exception')
-        all_serialized = OrderSerializer(all_orders, many=True).data
-        remaining_serialized = OrderSerializer(remaining_orders, many=True).data
-        delivered_serialized = OrderSerializer(delivered_orders, many=True).data
-        waiting_delivery_serialized = OrderSerializer(waitin_delivery_orders, many=True).data
-        return JsonResponse({"allOrders":all_serialized, "remainingOrders":remaining_serialized, "deliveredOrders":delivered_serialized, 'waitingDeliveryOrders':waiting_delivery_serialized}, status= status.HTTP_200_OK)
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# ─── Orders (dashboard) ───────────────────────────────────────────────────────
 
 @api_view(['GET'])
-@permission_classes([permission()])
+@permission_classes([IsAuthenticated, IsDashboardUser])
+def get_orders(request):
+    try:
+        base = Order.objects.filter(waiting=False)
+        return JsonResponse({
+            'allOrders':            OrderSerializer(base.order_by('-exception'), many=True).data,
+            'remainingOrders':      OrderSerializer(base.filter(status=False).order_by('-exception'), many=True).data,
+            'waitingDeliveryOrders':OrderSerializer(base.filter(status=True, delivered=False).order_by('-exception'), many=True).data,
+            'deliveredOrders':      OrderSerializer(base.filter(status=True, delivered=True).order_by('-exception'), many=True).data,
+        }, status=200)
+    except Exception as e:
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsDashboardUser])
 def get_searched_order(request):
     try:
         order_id = request.GET.get('orderID')
-        the_order = Order.objects.get(order_id = order_id)
-        serialized_order = OrderSerializer(the_order, many = False)
-        deficiencies = QuantityExceptions.objects.filter(order = order_id)
-        serialized_deficiencies = QuantityExceptionsSerializer(deficiencies, many = True)
-        return JsonResponse({'order': serialized_order.data, 'deficiencies': serialized_deficiencies.data, 'found': True, 'error':False}, status=status.HTTP_200_OK)
+        order    = Order.objects.get(order_id=order_id)
+        deficiencies = QuantityExceptions.objects.filter(order=order_id)
+        return JsonResponse({
+            'order':        OrderSerializer(order).data,
+            'deficiencies': QuantityExceptionsSerializer(deficiencies, many=True).data,
+            'found': True,
+            'error': False,
+        }, status=200)
     except Order.DoesNotExist:
-        return JsonResponse({'found': False, 'error':False})
-    except Exception as e:
-        return JsonResponse({'error':True})
+        return JsonResponse({'found': False, 'error': False})
+    except Exception:
+        return JsonResponse({'error': True})
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsDeliveryMan])
 def delivery_man_orders(request):
     try:
-        waiting_queryset = Order.objects.filter(status = True, waiting = False, delivered = False)
-        delivered_queryset = Order.objects.filter(status = True, waiting = False, delivered = True)
-        waiting_querySerializer = OrderSerializer(waiting_queryset, many=True)
-        delivered_querySerializer = OrderSerializer(delivered_queryset, many=True)
-        return JsonResponse({"orders":waiting_querySerializer.data}, status = status.HTTP_200_OK)
+        qs = Order.objects.filter(status=True, waiting=False, delivered=False)
+        return JsonResponse({'orders': OrderSerializer(qs, many=True).data}, status=200)
     except Exception as e:
-        print(e)
-        return JsonResponse({"message" : f"An error occured: {str(e)}"}, status = status.HTTP_400_BAD_REQUEST)  
-    
+        return JsonResponse({'message': f'Error: {e}'}, status=400)
+
 
 @api_view(['PATCH'])
 @permission_classes([IsAuthenticated, IsDeliveryMan])
 def confirm_delivery(request, pk):
-    username = request.data.get('username')
     try:
-        order = Order.objects.get(pk=pk)
-        order.delivery_man = username; order.delivered = True
+        username = request.data.get('username')
+        order    = Order.objects.get(pk=pk)
+        order.delivery_man = username
+        order.delivered    = True
         order.save()
-        return JsonResponse({'message':'delivered!'})
+        return JsonResponse({'message': 'Delivered!'})
     except Exception as e:
-        return JsonResponse({"message" : f"An error occured: {str(e)}"})  
+        return JsonResponse({'message': f'Error: {e}'})

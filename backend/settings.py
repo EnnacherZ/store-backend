@@ -196,24 +196,25 @@ DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'dashboard.authentication.CookieJWTAuthentication',
-        #'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
-    # Tu peux également configurer d'autres options ici
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',  # Optionnel : définir par défaut la permission "authentifié"
+        # Require authentication by default — override to AllowAny per view.
+        'rest_framework.permissions.IsAuthenticated',
     ],
 }
-
+ 
+# ── JWT ───────────────────────────────────────────────────────────────────────
+ 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),  # Example: Access token valid for 5 minutes
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),   # Example: Refresh token valid for 1 day
-    'ROTATE_REFRESH_TOKENS': True,                 # Recommended for security
-    'BLACKLIST_AFTER_ROTATION': True,              # Recommended for security
-    'AUTH_COOKIE': 'access_token',                 # Name of the cookie storing the access token
-    'AUTH_COOKIE_SECURE': True,                    # True in production (HTTPS only)
-    'AUTH_COOKIE_HTTP_ONLY': True,                 # Prevents client-side JS access
-    'AUTH_COOKIE_SAMESITE': 'None',                 # Or 'Strict' for stricter CSRF protection
-    'AUTH_COOKIE_REFRESH': 'refresh_token',        # Name of the cookie storing the refresh token
+    'ACCESS_TOKEN_LIFETIME':  timedelta(hours=8),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS':  True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_COOKIE':          'access_token',
+    'AUTH_COOKIE_REFRESH':  'refresh_token',
+    'AUTH_COOKIE_SECURE':   True,
+    'AUTH_COOKIE_HTTP_ONLY': True,
+    'AUTH_COOKIE_SAMESITE': 'None',
 }
 
 APPEND_SLASH=False
@@ -250,12 +251,14 @@ COMPANY_NAME        = "Al  Firdaous Store"
 COMPANY_TAGLINE     = "Premium Experience"          # shown under the logo
 COMPANY_LOGO_URL    = "https://www.alfirdaousstore.com/assets/WHITE%20FIRDAOUS%20STORE-DgnBjEdy.png"  # leave "" to use default SVG
 COMPANY_ADDRESS     = "123 Creative Avenue, Laayoune, Maroc"
+COMPANY_WEBSITE     = "https://www.alfirdaousstore.com"
 
 # ── Footer social links (leave "" to hide the icon) ──────────────────────────
-EMAIL_SOCIAL_FACEBOOK  = "https://facebook.com/yourpage"
-EMAIL_SOCIAL_TWITTER   = "https://twitter.com/yourhandle"
-EMAIL_SOCIAL_LINKEDIN  = "https://linkedin.com/company/yourcompany"
-EMAIL_SOCIAL_INSTAGRAM = "https://instagram.com/yourhandle"
+SOCIAL_FACEBOOK  = "https://facebook.com/yourpage"
+SOCIAL_TWITTER   = "https://twitter.com/yourhandle"
+SOCIAL_LINKEDIN  = "https://linkedin.com/company/yourcompany"
+SOCIAL_INSTAGRAM = "https://instagram.com/yourhandle"
+SOCIAL_TIKTOK = "https://instagram.com/yourhandle"
 
 # ── Unsubscribe link shown at the bottom of every email ───────────────────────
-EMAIL_UNSUBSCRIBE_URL  = "https://yourdomain.com/unsubscribe/"
+UNSUBSCRIBE_URL  = "https://www.alfirdaousstore.com/newsletter/unsubscribe/"

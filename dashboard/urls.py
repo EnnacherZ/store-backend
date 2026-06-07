@@ -14,7 +14,7 @@ from store.views import get_products
 urlpatterns = [
     path("user/register", CreateUserView.as_view()),
     path('token', CustomTokenObtainPairView.as_view()),
-    path('app/token', CustomAppTokenObtainPairView.as_view()),
+    #path('app/token', CustomAppTokenObtainPairView.as_view()),
     path('app/token/refresh', TokenRefreshView.as_view()),
     # path('refreshcookie', RefreshTokenCookieView),
     path('logout', LogoutView.as_view()),
