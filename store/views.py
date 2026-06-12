@@ -348,13 +348,9 @@ def get_searched_product(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_products(request):
-    # if origin_checker(request):
-    #     return HttpResponseForbidden(forbbiden_message)
-
     try:
         product_type = request.GET.get('productType')
         newest = request.GET.get('newest')
@@ -362,18 +358,22 @@ def get_products(request):
         filters = {}
 
         if product_type:
-            filters['product_type'] = product_type
+            filters['category__product_type__name'] = product_type  # ← traverse the FK
 
         if newest is not None:
-            # Convert string to boolean
             filters['newest'] = newest.lower() == 'true'
 
-        products = Product.objects.filter(**filters) if filters else Product.objects.all()
+        products = (
+            Product.objects
+            .select_related('category__product_type')
+            .prefetch_related('images', 'stock')
+            .filter(**filters)
+        )
 
-        serialized_products = ProductSerializer(products, many=True)
+        serialized = ProductSerializer(products, many=True)
 
         return JsonResponse(
-            {'products': serialized_products.data},
+            {'products': serialized.data},
             status=status.HTTP_200_OK
         )
 

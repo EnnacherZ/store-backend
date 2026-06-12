@@ -4,6 +4,7 @@ from threading import Lock
 from django.contrib.auth import get_user_model
 from django.http import JsonResponse, HttpResponseForbidden
 from django.db.models import F
+from django.db import IntegrityError
 from django.conf import settings
 
 from rest_framework import generics, status
@@ -25,9 +26,10 @@ from store.models import (
 )
 from store.serializers import (
     ProductSerializer, ProductStockSerializer, OrderSerializer,
-    QuantityExceptionsSerializer,
+    QuantityExceptionsSerializer, ProductTypeSerializer, CategorySerializer
 )
 from store.views import get_products          # public endpoint, reused
+from store.models import *
 
 load_dotenv()
 
@@ -158,12 +160,82 @@ class CreateUserView(generics.CreateAPIView):
 
 # ─── Products ─────────────────────────────────────────────────────────────────
 
-class ProductViewSet(generics.ListCreateAPIView):
-    queryset               = Product.objects.all()
-    serializer_class       = ProductSerializer
+class ProductViewSet(APIView):
+    parser_classes = [MultiPartParser, FormParser]
     authentication_classes = [DashboardCookieJWTAuthentication]
-    permission_classes     = [IsAuthenticated, IsManager]
-    parser_classes         = (MultiPartParser, FormParser)
+    permission_classes = [IsAuthenticated, IsManager]
+
+    def post(self, request):
+        data = request.data
+
+        # --- Extract fields ---
+        product_type_name = data.get("product_type", "").strip()
+        category_name     = data.get("category", "").strip()
+        ref               = data.get("ref", "").strip()
+        name              = data.get("name", "").strip()
+        price             = data.get("price")
+        newest            = data.get("newest", "false").lower() == "true"
+        promo             = data.get("promo", 0)
+        image_primary     = request.FILES.get("image")
+
+        # --- Validation ---
+        if not all([product_type_name, category_name, ref, name, price, image_primary]):
+            return Response(
+                {"error": "Fields product_type, category, ref, name, price and image are required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # --- Resolve ProductType ---
+        try:
+            product_type = ProductType.objects.get(name=product_type_name)
+        except ProductType.DoesNotExist:
+            return Response(
+                {"error": f"ProductType '{product_type_name}' not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # --- Resolve Category (scoped to the ProductType) ---
+        try:
+            category = Category.objects.get(product_type=product_type, name=category_name)
+        except Category.DoesNotExist:
+            return Response(
+                {"error": f"Category '{category_name}' not found under '{product_type_name}'."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # --- Create Product ---
+        try:
+            product = Product.objects.create(
+                category=category,
+                ref=ref,
+                name=name,
+                price=price,
+                newest=newest,
+                promo=promo,
+            )
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # --- Primary image ---
+        ProductImage.objects.create(
+            product=product,
+            image=image_primary,
+            is_primary=True,
+            order=0,
+        )
+
+        # --- Additional images (image1, image2, image3, image4) ---
+        for i in range(1, 5):
+            extra = request.FILES.get(f"image{i}")
+            if extra:
+                ProductImage.objects.create(
+                    product=product,
+                    image=extra,
+                    is_primary=False,
+                    order=i,
+                )
+
+        return Response({"id": product.id, "ref": product.ref}, status=status.HTTP_201_CREATED)
 
 
 class ProductManager(generics.RetrieveUpdateDestroyAPIView):
@@ -206,6 +278,117 @@ class QuantityExceptionsManager(generics.RetrieveUpdateDestroyAPIView):
     authentication_classes = [DashboardCookieJWTAuthentication]
     permission_classes     = [IsAuthenticated, IsManager]
     parser_classes         = (MultiPartParser, FormParser)
+
+
+
+
+
+class AddProductTypesView(APIView):
+    """
+    POST db/products/types/add
+    Body: { "values": ["TypeA", "TypeB"] }
+    """
+    authentication_classes = [DashboardCookieJWTAuthentication]
+    permission_classes     = [IsAuthenticated, IsManager]
+
+    def post(self, request):
+        values = request.data.get("values", [])
+
+        if not values or not isinstance(values, list):
+            return Response(
+                {"error": "A non-empty list of 'values' is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        created, skipped = [], []
+
+        for name in values:
+            name = name.strip()
+            if not name:
+                continue
+            try:
+                obj, was_created = ProductType.objects.get_or_create(name=name)
+                (created if was_created else skipped).append(name)
+            except IntegrityError:
+                skipped.append(name)
+
+        return Response(
+            {"created": created, "skipped": skipped},
+            status=status.HTTP_201_CREATED
+        )
+
+
+class AddProductParametersView(APIView):
+    """
+    POST db/products/parameters/add
+    Body: { "productType": "TypeA", "param": "color", "values": ["Red", "Blue"] }
+
+    Note: 'param' is received from the frontend but Category only has a 'name'
+    field, so values are stored directly as category names under the given type.
+    """
+    authentication_classes = [DashboardCookieJWTAuthentication]
+    permission_classes     = [IsAuthenticated, IsManager]
+
+    def post(self, request):
+        product_type_name = request.data.get("productType", "").strip()
+        values = request.data.get("values", [])
+
+        if not product_type_name:
+            return Response(
+                {"error": "'productType' is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not values or not isinstance(values, list):
+            return Response(
+                {"error": "A non-empty list of 'values' is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            product_type = ProductType.objects.get(name=product_type_name)
+        except ProductType.DoesNotExist:
+            return Response(
+                {"error": f"ProductType '{product_type_name}' does not exist."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        created, skipped = [], []
+
+        for name in values:
+            name = name.strip()
+            if not name:
+                continue
+            try:
+                obj, was_created = Category.objects.get_or_create(
+                    product_type=product_type,
+                    name=name
+                )
+                (created if was_created else skipped).append(name)
+            except IntegrityError:
+                skipped.append(name)
+
+        return Response(
+            {"created": created, "skipped": skipped},
+            status=status.HTTP_201_CREATED
+        )
+
+
+
+class ProductParametersView(APIView):
+    def get(self, request):
+        product_types = ProductType.objects.prefetch_related("categories")
+
+        data = {
+            "types": [pt.name for pt in product_types],
+            "categories": {
+                pt.name: [cat.name for cat in pt.categories.all()]
+                for pt in product_types
+            }
+        }
+
+        return Response(data)
+
 
 
 # ─── Function-based dashboard views ───────────────────────────────────────────
@@ -313,91 +496,14 @@ def process_deficiency(request):
 
 # ─── Product parameters (stored in parameters.json) ───────────────────────────
 
-PARAMS_PATH = os.path.join(os.path.dirname(__file__), 'parameters.json')
-_file_lock  = Lock()
 
 
-def _load_params():
-    with _file_lock, open(PARAMS_PATH, 'r', encoding='utf-8') as f:
-        return json.load(f)
 
 
-def _save_params(data):
-    with _file_lock, open(PARAMS_PATH, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_params(request):
-    """Public — used by the storefront to populate filters."""
-    try:
-        params     = _load_params()
-        types_     = params.get('types', [])
-        raw_cats   = params.get('categories', {})
-        categories = {
-            t: [v[0] for v in raw_cats.get(t, []) if v]
-            for t in types_
-        }
-        return JsonResponse({'types': types_, 'categories': categories}, status=200)
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
 
 
-@api_view(['POST'])
-@authentication_classes([DashboardCookieJWTAuthentication])
-@permission_classes([IsAuthenticated, IsManager])
-def add_product_parameters(request):
-    try:
-        data   = json.loads(request.body)
-        type_  = data.get('productType')
-        param  = data.get('param')
-        values = data.get('values')
-
-        if not isinstance(param, str) or not isinstance(type_, str):
-            raise ValueError('param and productType must be strings.')
-        if not isinstance(values, list):
-            raise ValueError('values must be a list.')
-
-        params = _load_params()
-        if param in params:
-            current = params[param].setdefault(type_, [])
-            for v in values:
-                tup = (v, v)
-                if tup not in current:
-                    current.append(tup)
-        _save_params(params)
-        return JsonResponse({'message': 'ok!'}, status=201)
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
-
-
-@api_view(['POST'])
-@authentication_classes([DashboardCookieJWTAuthentication])
-@permission_classes([IsAuthenticated, IsManager])
-def add_product_types(request):
-    try:
-        data   = json.loads(request.body)
-        values = data.get('values', [])
-        params = _load_params()
-
-        for v in values:
-            if v not in params.setdefault('types', []):
-                params['types'].append(v)
-            params.setdefault('categories', {}).setdefault(v, [])
-
-        _save_params(params)
-        return JsonResponse({'message': 'ok!'}, status=201)
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
-
-
-@api_view(['GET'])
-@authentication_classes([DashboardCookieJWTAuthentication])
-@permission_classes([IsAuthenticated, IsManager])
-def get_products_types(request):
-    params = _load_params()
-    return JsonResponse({'types': params.get('types', [])}, status=200)
 
 
 @api_view(['GET'])

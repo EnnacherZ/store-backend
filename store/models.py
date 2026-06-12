@@ -36,27 +36,95 @@ def get_choices(type_, label):
 
 # ─── Models ───────────────────────────────────────────────────────────────────
  
-class Product(models.Model):
-    product_type = models.CharField(max_length=100)
-    category     = models.CharField(max_length=100)
-    ref          = models.CharField(max_length=100)
-    name         = models.CharField(max_length=100)
-    price        = models.FloatField(validators=[MinValueValidator(0.0)])
-    newest       = models.BooleanField(default=False)
-    promo        = models.FloatField(validators=[MinValueValidator(0.0), MaxValueValidator(100.0)], default=0)
-    image        = models.FileField(storage=MediaCloudinaryStorage(), upload_to='documents/products',
-                                    default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
-    image1       = models.FileField(storage=MediaCloudinaryStorage(), upload_to='documents/products',
-                                    default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
-    image2       = models.FileField(storage=MediaCloudinaryStorage(), upload_to='documents/products',
-                                    default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
-    image3       = models.FileField(storage=MediaCloudinaryStorage(), upload_to='documents/products',
-                                    default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
-    image4       = models.FileField(storage=MediaCloudinaryStorage(), upload_to='documents/products',
-                                    default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg')
+
+
+
+
+
+
  
+class ProductType(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+
+    class Meta:
+        ordering = ["name"]
+
     def __str__(self):
-        return "%s %s %s" % (self.category, self.ref, self.name)
+        return self.name
+
+
+class Category(models.Model):
+    product_type = models.ForeignKey(
+        ProductType,
+        on_delete=models.CASCADE,
+        related_name="categories"
+    )
+
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        ordering = ["name"]
+        unique_together = ("product_type", "name")
+
+    def __str__(self):
+        return f"{self.product_type.name} - {self.name}"
+
+
+class Product(models.Model):
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name="products"
+    )
+
+    ref = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
+
+    price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(0)]
+    )
+
+    newest = models.BooleanField(default=False)
+
+    promo = models.FloatField(
+        default=0,
+        validators=[
+            MinValueValidator(0),
+            MaxValueValidator(100)
+        ]
+    )
+
+    def __str__(self):
+        return f"{self.ref} - {self.name}"
+
+    @property
+    def product_type(self):
+        return self.category.product_type
+
+
+class ProductImage(models.Model):
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="images"
+    )
+
+    image = models.FileField(
+        storage=MediaCloudinaryStorage(),
+        upload_to="documents/products",
+        default='https://res.cloudinary.com/de2wpriie/image/upload/y9DpT_eouhy5.jpg'
+    )
+
+    is_primary = models.BooleanField(default=False)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order"]
+
+    def __str__(self):
+        return f"{self.product.name} - Image {self.order}"
  
  
 class ProductStock(models.Model):
@@ -88,7 +156,8 @@ class ClientProfile(models.Model):
         on_delete=models.CASCADE,
         related_name="client_profile"
     )
-    
+
+    country        = models.CharField(max_length=50, default="")
     city           = models.CharField(max_length=50, default="")
     address        = models.TextField(blank=True, default="")
     phone          = models.CharField(max_length=20, blank=True, null=True)

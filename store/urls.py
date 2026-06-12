@@ -1,51 +1,55 @@
-"""
-URL configuration for storeBackend project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.0/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
-
 from django.urls import path
 from store.views import *
 from store.models import *
 from store.serializers import *
 from store.tests import youcanpay_webhook
-from store.tests import *
-from .client_profile import *
+from .client_profile import (
+    SignUpClientView,
+    ActivateClientView,
+    SignInClientView,
+    MeClientView,
+    UpdateClientProfileView,
+    AvatarUpdateView,
+    RefreshClientTokenView,
+    SignOutClientView,
+    ClientOrdersView,
+)
 from .payment import *
 
 urlpatterns = [
-    #path('ip', get_ip, name='get_ip'),
+    # ── Webhook ───────────────────────────────────────────────────────────────
     path('webhook/ycp/', youcanpay_webhook),
-    path('products/get/all', get_all_products),
-    path('products/get', get_products),
-    path('product/search/get', get_searched_product),
-    path('payment/handle/', handle_payment),
-    path('payment/verify/', handle_verify),
-    path('payment/url/get', getPaymentUrl),
-    path('payment/url/retry/', retry_payment_url),
-    path('payment/cancel/',    cancel_payment),
-    path('reviews/add/', add_review),
-    path('reviews/get', get_reviews),
-    path('orders/check', check_order),
+
+    # ── Products ──────────────────────────────────────────────────────────────
+    path('products/get/all',     get_all_products),
+    path('products/get',         get_products),
+    path('product/search/get',   get_searched_product),
+
+    # ── Payment ───────────────────────────────────────────────────────────────
+    path('payment/handle/',      handle_payment),
+    path('payment/verify/',      handle_verify),
+    path('payment/url/get',      getPaymentUrl),
+    path('payment/url/retry/',   retry_payment_url),
+    path('payment/cancel/',      cancel_payment),
+
+    # ── Reviews ───────────────────────────────────────────────────────────────
+    path('reviews/add/',         add_review),
+    path('reviews/get',          get_reviews),
+
+    # ── Order tracker (public) ────────────────────────────────────────────────
+    path('orders/check',         check_order),
+
+    # ── Client auth ───────────────────────────────────────────────────────────
     path('client/signup/',                          SignUpClientView.as_view()),
     path('client/activate/<uuid:activation_code>/', ActivateClientView.as_view()),
     path('client/signin/',                          SignInClientView.as_view()),
     path('client/me/',                              MeClientView.as_view()),
     path('client/me/update/',                       UpdateClientProfileView.as_view()),
+    path('client/me/avatar/',                       AvatarUpdateView.as_view()),
     path('client/refresh/',                         RefreshClientTokenView.as_view()),
     path('client/signout/',                         SignOutClientView.as_view()),
     path('client/orders/',                          ClientOrdersView.as_view()),
-    path('send_mail/', envoyer_email),
 
+    # ── Email ─────────────────────────────────────────────────────────────────
+    path('send_mail/',           envoyer_email),
 ]

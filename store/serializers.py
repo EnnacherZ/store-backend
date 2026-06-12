@@ -13,12 +13,77 @@ class ProductStockSerializer(serializers.ModelSerializer):
     def get_quantity(self, obj):
         return obj.available_quantity()
 
-class ProductSerializer(serializers.ModelSerializer):
-    stock = ProductStockSerializer(many=True, read_only = True)
-    class Meta:
-        model = Product
+
+class ProductTypeSerializer(serializers.ModelSerializer):
+    class Meta: 
+        model = ProductType
         fields = '__all__'
 
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta: 
+        model = Category
+        fields = '__all__'
+
+class ProductSerializer(serializers.ModelSerializer):
+    product_type = serializers.CharField(
+        source="category.product_type.name",
+        read_only=True
+    )
+
+    category = serializers.CharField(
+        source="category.name",
+        read_only=True
+    )
+    stock = ProductStockSerializer(many=True, read_only = True)
+    price = serializers.FloatField()
+    image = serializers.SerializerMethodField()
+    image1 = serializers.SerializerMethodField()
+    image2 = serializers.SerializerMethodField()
+    image3 = serializers.SerializerMethodField()
+    image4 = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Product
+
+        fields = [
+            "id",
+            "product_type",
+            "category",
+            "ref",
+            "name",
+            "price",
+            "promo",
+            "newest",
+            "stock",
+            "image",
+            "image1",
+            "image2",
+            "image3",
+            "image4",
+        ]
+
+    def _get_image(self, obj, index):
+        images = list(obj.images.all())
+
+        if len(images) > index:
+            return images[index].image.url
+
+        return None
+
+    def get_image(self, obj):
+        return self._get_image(obj, 0)
+
+    def get_image1(self, obj):
+        return self._get_image(obj, 1)
+
+    def get_image2(self, obj):
+        return self._get_image(obj, 2)
+
+    def get_image3(self, obj):
+        return self._get_image(obj, 3)
+
+    def get_image4(self, obj):
+        return self._get_image(obj, 4)
 
 class ClientSerializer(serializers.ModelSerializer):
     class Meta:
