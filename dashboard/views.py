@@ -376,6 +376,8 @@ class AddProductParametersView(APIView):
 
 
 class ProductParametersView(APIView):
+    permission_classes = [AllowAny]
+    
     def get(self, request):
         product_types = ProductType.objects.prefetch_related("categories")
 

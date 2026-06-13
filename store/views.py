@@ -1,6 +1,7 @@
 import os, json, datetime
 from .models import *
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
+
 from rest_framework.permissions import AllowAny
 from django.http import HttpResponseForbidden, JsonResponse
 from rest_framework import status
@@ -453,6 +454,7 @@ def check_order(request):
 from collections import defaultdict
 
 @api_view(['GET'])
+# @authenticate_class([])
 @permission_classes([AllowAny])
 def get_all_products(request):
     try:
