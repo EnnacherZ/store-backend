@@ -1,11 +1,16 @@
 from rest_framework.permissions import BasePermission
+from rest_framework.exceptions import PermissionDenied
+
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
-allowed_origins = os.environ.get('REQUEST_ALLOWED_ORIGINS')
-ALLOWED_ORIGINS = [allowed_origins]
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("REQUEST_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 
 
 
@@ -50,5 +55,11 @@ class IsDashboardUser(BasePermission):
 
 class OriginPermission(BasePermission):
     def has_permission(self, request, view):
+        if request.method == "OPTIONS":
+            return True
         referer = request.META.get("HTTP_REFERER", "")
-        return referer in ALLOWED_ORIGINS
+
+        if referer not in ALLOWED_ORIGINS:
+            raise PermissionDenied("Forbidden")
+
+        return True

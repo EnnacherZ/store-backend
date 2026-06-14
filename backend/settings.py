@@ -18,7 +18,6 @@ import os
 from dotenv import load_dotenv
 import cloudinary
 from urllib.parse import urlparse, parse_qsl
-import dj_database_url
 
 load_dotenv()
 
@@ -220,7 +219,11 @@ SIMPLE_JWT = {
 APPEND_SLASH=False
 
 ALLOWED_HOSTS = [os.environ.get('ALLOWED_HOSTS')]
-CORS_ALLOWED_ORIGINS = [os.environ.get('CORS_ALLOWED_ORIGINS')]
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 #CORS_ALLOW_ALL_ORIGINS = True
 
 
@@ -228,7 +231,11 @@ CSRF_COOKIE_NAME = "csrftoken"
 CSRF_COOKIE_SECURE = True
 CORS_ALLOW_CREDENTIALS = True
 CSRF_COOKIE_HTTPONLY = True
-CSRF_TRUSTED_ORIGINS = [os.environ.get('CORS_ALLOWED_ORIGINS')]
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 
 
 
