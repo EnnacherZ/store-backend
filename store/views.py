@@ -1,8 +1,8 @@
 import os, json, datetime
 from .models import *
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from rest_framework.decorators import api_view, permission_classes
 
-from rest_framework.permissions import AllowAny
+from dashboard.permissions import OriginPermission
 from django.http import HttpResponseForbidden, JsonResponse
 from rest_framework import status
 from .serializers import *
@@ -81,7 +81,7 @@ def _company_context(request) -> dict:
 
 
 @api_view(["POST"])
-@permission_classes([AllowAny])
+@permission_classes([OriginPermission])
 def envoyer_email(request):
     """
     POST /api/envoyer-email/
@@ -201,12 +201,6 @@ def get_ip_address(request):
  
 
 
-def origin_checker(request):
-    referer = request.META.get('HTTP_REFERER','')
-    if referer in ALLOWED_ORIGINS: return False
-    else : return True
-    
-
 
 
 # Create your views here.         
@@ -217,7 +211,7 @@ def origin_checker(request):
  
     
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([OriginPermission])
 def add_review(request):
     if request.method == 'POST':
         #if origin_checker(request):return HttpResponseForbidden(forbbiden_message)
@@ -255,7 +249,7 @@ def add_review(request):
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([OriginPermission])
 def get_reviews(request):
     #if origin_checker(request): return HttpResponseForbidden(forbbiden_message)
         
@@ -276,11 +270,8 @@ def get_reviews(request):
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([OriginPermission])
 def get_searched_product(request):
-    if origin_checker(request):
-        return HttpResponseForbidden(forbbiden_message)
-
     try:
         product_type = request.GET.get('productType')
         cat = request.GET.get('category')
@@ -350,7 +341,7 @@ def get_searched_product(request):
         )
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([OriginPermission])
 def get_products(request):
     try:
         product_type = request.GET.get('productType')
@@ -387,7 +378,7 @@ def get_products(request):
     
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([OriginPermission])
 def check_order(request):
     order_id = request.GET.get('orderID', '').strip()
     if not order_id:
@@ -455,7 +446,7 @@ from collections import defaultdict
 
 @api_view(['GET'])
 # @authenticate_class([])
-@permission_classes([AllowAny])
+@permission_classes([OriginPermission])
 def get_all_products(request):
     try:
         # 🔹 récupération des params

@@ -1,8 +1,7 @@
 import os, json
 from .models import *
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from django.http import HttpResponseForbidden, JsonResponse
+from django.http import JsonResponse
 from rest_framework import status
 from .serializers import *
 from dotenv import load_dotenv
@@ -14,15 +13,13 @@ from youcanpay.youcan_pay import YouCanPay
 from youcanpay.models.token import TokenData
 from youcanpay.models.data import Customer
 from dashboard.authentication import CookieJWTAuthentication
+from dashboard.permissions import OriginPermission
 
 
 load_dotenv()
 key1 = os.environ.get('payment_second_key')
 key2 = os.environ.get('payment_first_key')
-allowed_origins = os.environ.get('REQUEST_ALLOWED_ORIGINS')
 is_sandbox = os.environ.get('IS_SANDBOX_MODE') == 'True'
-forbbiden_message = 'Forbidden-Acces denied'
-ALLOWED_ORIGINS = [allowed_origins]
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -32,13 +29,7 @@ def get_ip_address(request):
     if x_forwarded_for:
         return x_forwarded_for.split(',')[0].strip()
     return request.META.get('REMOTE_ADDR')
- 
 
-
-def origin_checker(request):
-    referer = request.META.get('HTTP_REFERER','')
-    if referer in ALLOWED_ORIGINS: return False
-    else : return True
     
 
 def _release_reservations(order):
@@ -156,12 +147,9 @@ SHIPPING_FEE = 0.00   # Free shipping
 # calculates the total server-side, then requests a YouCanPay token.
 #
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([OriginPermission])
 @transaction.atomic
 def getPaymentUrl(request):
-    if origin_checker(request):
-        return HttpResponseForbidden(forbbiden_message)
- 
     try:
         data = json.loads(request.body)
  
@@ -341,11 +329,9 @@ def getPaymentUrl(request):
 # COD            : creates the order and deducts stock immediately.
 #
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([OriginPermission])
 @transaction.atomic
 def handle_payment(request):
-    if origin_checker(request):
-        return HttpResponseForbidden(forbbiden_message)
  
     if request.method != 'POST':
         return JsonResponse({'message': 'Invalid request method.'}, status=405)
@@ -562,7 +548,7 @@ def handle_payment(request):
 #   'error'     → unexpected server error
  
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([OriginPermission])
 def handle_verify(request):
     try:
         data = json.loads(request.body)
@@ -629,11 +615,9 @@ def handle_verify(request):
 # This means stock is never double-reserved and never prematurely released.
  
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([OriginPermission])
 @transaction.atomic
 def retry_payment_url(request):
-    if origin_checker(request):
-        return HttpResponseForbidden(forbbiden_message)
  
     try:
         data       = json.loads(request.body)
@@ -722,11 +706,9 @@ def retry_payment_url(request):
 #   - The order record stays in the DB for admin visibility
  
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([OriginPermission])
 @transaction.atomic
 def cancel_payment(request):
-    if origin_checker(request):
-        return HttpResponseForbidden(forbbiden_message)
  
     try:
         data     = json.loads(request.body)

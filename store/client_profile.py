@@ -23,6 +23,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 
 from .models import ClientProfile, Client, Order
 from dashboard.authentication import CookieJWTAuthentication
+from dashboard.permissions import OriginPermission
 
 load_dotenv()
 User = get_user_model()
@@ -83,7 +84,7 @@ class IsClient(permissions.BasePermission):
 # ════════════════════════════════════════════════════════════════════════════
 
 class SignUpClientView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [OriginPermission]
 
     def post(self, request):
         data = request.data
@@ -148,7 +149,7 @@ class SignUpClientView(APIView):
 # ════════════════════════════════════════════════════════════════════════════
 
 class ActivateClientView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [OriginPermission]
 
     def get(self, request, activation_code):
         try:
@@ -177,7 +178,7 @@ class ActivateClientView(APIView):
 # ════════════════════════════════════════════════════════════════════════════
 
 class SignInClientView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [OriginPermission]
 
     def post(self, request):
         email    = request.data.get('email', '').strip().lower()
@@ -217,7 +218,7 @@ class SignInClientView(APIView):
 
 class MeClientView(APIView):
     authentication_classes = [CookieJWTAuthentication]
-    permission_classes     = [IsAuthenticated, IsClient]
+    permission_classes     = [OriginPermission, IsAuthenticated, IsClient]
 
     def get(self, request):
         user    = request.user
@@ -243,7 +244,7 @@ _ALLOWED_FIELDS = _USER_FIELDS | _PROFILE_FIELDS
 
 class UpdateClientProfileView(APIView):
     authentication_classes = [CookieJWTAuthentication]
-    permission_classes     = [IsAuthenticated, IsClient]
+    permission_classes     = [OriginPermission, IsAuthenticated, IsClient]
     parser_classes         = [JSONParser]
 
     def patch(self, request):
@@ -297,7 +298,7 @@ class UpdateClientProfileView(APIView):
 
 class AvatarUpdateView(APIView):
     authentication_classes = [CookieJWTAuthentication]
-    permission_classes     = [IsAuthenticated, IsClient]
+    permission_classes     = [OriginPermission, IsAuthenticated, IsClient]
     parser_classes         = [MultiPartParser, FormParser]
 
     def patch(self, request):
@@ -332,7 +333,7 @@ class AvatarUpdateView(APIView):
 # ════════════════════════════════════════════════════════════════════════════
 
 class RefreshClientTokenView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [OriginPermission]
 
     def post(self, request):
         refresh_str = request.COOKIES.get('refresh_token')
@@ -361,7 +362,7 @@ class RefreshClientTokenView(APIView):
 # ════════════════════════════════════════════════════════════════════════════
 
 class SignOutClientView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [OriginPermission]
 
     def post(self, request):
         response = Response({'message': 'Déconnexion réussie.'}, status=status.HTTP_200_OK)
@@ -375,7 +376,7 @@ class SignOutClientView(APIView):
 
 class ClientOrdersView(APIView):
     authentication_classes = [CookieJWTAuthentication]
-    permission_classes     = [IsAuthenticated, IsClient]
+    permission_classes     = [OriginPermission, IsAuthenticated, IsClient]
 
     def get(self, request):
         email   = request.user.email

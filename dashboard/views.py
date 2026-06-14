@@ -1,43 +1,35 @@
-import os, json, traceback
-from threading import Lock
+import json, traceback
 
 from django.contrib.auth import get_user_model
 from django.http import JsonResponse, HttpResponseForbidden
 from django.db.models import F
 from django.db import IntegrityError
-from django.conf import settings
 
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 
-from dotenv import load_dotenv
 
 from .authentication import DashboardCookieJWTAuthentication
-from .permissions import IsAdmin, IsDeliveryMan, IsDashboardUser, IsManager
+from .permissions import IsAdmin, IsDeliveryMan, IsDashboardUser, IsManager, OriginPermission
 from .serializers import CustomTokenObtainPairSerializer, UserSerializer
 from store.models import (
     Product, ProductStock, Order, OrderedProduct, QuantityExceptions,
 )
 from store.serializers import (
     ProductSerializer, ProductStockSerializer, OrderSerializer,
-    QuantityExceptionsSerializer, ProductTypeSerializer, CategorySerializer
+    QuantityExceptionsSerializer
 )
-from store.views import get_products          # public endpoint, reused
 from store.models import *
 
-load_dotenv()
 
 User = get_user_model()
 
-allowed_origins   = os.environ.get('REQUEST_ALLOWED_ORIGINS', '')
-ALLOWED_ORIGINS   = {allowed_origins}
-forbidden_message = 'Forbidden — access denied'
 
 DASHBOARD_ROLES = frozenset({'admin', 'manager', 'delivery'})
 
@@ -47,17 +39,12 @@ DASHBOARD_ROLES = frozenset({'admin', 'manager', 'delivery'})
 ACTIVE_PAYMENT_STATUSES = ('confirmed', 'cod', 'failed')
 
 
-def origin_checker(request) -> bool:
-    """Return True when the referer is NOT the allowed frontend origin."""
-    referer = request.META.get('HTTP_REFERER', '')
-    return referer not in ALLOWED_ORIGINS
-
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 
 class RefreshTokenCookieView(APIView):
     """Rotate the access cookie using the refresh cookie."""
-    permission_classes = [AllowAny]
+    permission_classes = [OriginPermission]
 
     def post(self, request):
         refresh_str = request.COOKIES.get('refresh_token')
@@ -117,7 +104,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
 
 class LogoutView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [OriginPermission]
 
     def post(self, request):
         res = Response({'message': 'Logged out.'})
@@ -132,7 +119,7 @@ class CheckAuthView(APIView):
     DashboardCookieJWTAuthentication already rejects client tokens.
     """
     authentication_classes = [DashboardCookieJWTAuthentication]
-    permission_classes     = [IsAuthenticated]
+    permission_classes     = [OriginPermission, IsAuthenticated]
 
     def get(self, request):
         u = request.user
@@ -155,7 +142,7 @@ class CreateUserView(generics.CreateAPIView):
     queryset           = User.objects.all()
     serializer_class   = UserSerializer
     authentication_classes = [DashboardCookieJWTAuthentication]
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [OriginPermission, IsAuthenticated, IsAdmin]
 
 
 # ─── Products ─────────────────────────────────────────────────────────────────
@@ -163,7 +150,7 @@ class CreateUserView(generics.CreateAPIView):
 class ProductViewSet(APIView):
     parser_classes = [MultiPartParser, FormParser]
     authentication_classes = [DashboardCookieJWTAuthentication]
-    permission_classes = [IsAuthenticated, IsManager]
+    permission_classes = [OriginPermission, IsAuthenticated, IsManager]
 
     def post(self, request):
         data = request.data
@@ -242,7 +229,7 @@ class ProductManager(generics.RetrieveUpdateDestroyAPIView):
     queryset               = Product.objects.all()
     serializer_class       = ProductSerializer
     authentication_classes = [DashboardCookieJWTAuthentication]
-    permission_classes     = [IsAuthenticated, IsManager]
+    permission_classes     = [OriginPermission, IsAuthenticated, IsManager]
     parser_classes         = (MultiPartParser, FormParser)
 
 
@@ -260,7 +247,7 @@ class OrderViewSet(generics.ListCreateAPIView):
     queryset               = Order.objects.all()
     serializer_class       = OrderSerializer
     authentication_classes = [DashboardCookieJWTAuthentication]
-    permission_classes     = [IsAuthenticated, IsDashboardUser]
+    permission_classes     = [OriginPermission, IsAuthenticated, IsDashboardUser]
     parser_classes         = (MultiPartParser, FormParser)
 
 
@@ -268,7 +255,7 @@ class OrderManager(generics.RetrieveUpdateDestroyAPIView):
     queryset               = Order.objects.all()
     serializer_class       = OrderSerializer
     authentication_classes = [DashboardCookieJWTAuthentication]
-    permission_classes     = [IsAuthenticated, IsDashboardUser]
+    permission_classes     = [OriginPermission, IsAuthenticated, IsDashboardUser]
     parser_classes         = (MultiPartParser, FormParser)
 
 
@@ -276,7 +263,7 @@ class QuantityExceptionsManager(generics.RetrieveUpdateDestroyAPIView):
     queryset               = QuantityExceptions.objects.all()
     serializer_class       = QuantityExceptionsSerializer
     authentication_classes = [DashboardCookieJWTAuthentication]
-    permission_classes     = [IsAuthenticated, IsManager]
+    permission_classes     = [OriginPermission, IsAuthenticated, IsManager]
     parser_classes         = (MultiPartParser, FormParser)
 
 
@@ -289,7 +276,7 @@ class AddProductTypesView(APIView):
     Body: { "values": ["TypeA", "TypeB"] }
     """
     authentication_classes = [DashboardCookieJWTAuthentication]
-    permission_classes     = [IsAuthenticated, IsManager]
+    permission_classes     = [OriginPermission, IsAuthenticated, IsManager]
 
     def post(self, request):
         values = request.data.get("values", [])
@@ -327,7 +314,7 @@ class AddProductParametersView(APIView):
     field, so values are stored directly as category names under the given type.
     """
     authentication_classes = [DashboardCookieJWTAuthentication]
-    permission_classes     = [IsAuthenticated, IsManager]
+    permission_classes     = [OriginPermission, IsAuthenticated, IsManager]
 
     def post(self, request):
         product_type_name = request.data.get("productType", "").strip()
@@ -376,7 +363,7 @@ class AddProductParametersView(APIView):
 
 
 class ProductParametersView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [OriginPermission]
     
     def get(self, request):
         product_types = ProductType.objects.prefetch_related("categories")
@@ -406,11 +393,10 @@ class ProductParametersView(APIView):
 
 @api_view(['GET'])
 @authentication_classes([DashboardCookieJWTAuthentication])
-@permission_classes([IsAuthenticated, IsDashboardUser])
+@permission_classes([OriginPermission, IsAuthenticated, IsDashboardUser])
 def db_get_orders(request):
     """Legacy single-list endpoint kept for backward compat (orders/remaining/get)."""
-    if origin_checker(request):
-        return HttpResponseForbidden(forbidden_message)
+
     try:
         # FIX: was filter(status=False, waiting=False) — 'waiting' doesn't exist
         qs = Order.objects.filter(
@@ -424,10 +410,9 @@ def db_get_orders(request):
 
 @api_view(['GET'])
 @authentication_classes([DashboardCookieJWTAuthentication])
-@permission_classes([IsAuthenticated, IsDashboardUser])
+@permission_classes([OriginPermission, IsAuthenticated, IsDashboardUser])
 def get_deficiencies(request):
-    if origin_checker(request):
-        return HttpResponseForbidden(forbidden_message)
+
     try:
         qs = QuantityExceptions.objects.filter(treated=False)
         return JsonResponse({'deficiencies': QuantityExceptionsSerializer(qs, many=True).data}, status=200)
@@ -437,10 +422,9 @@ def get_deficiencies(request):
 
 @api_view(['POST'])
 @authentication_classes([DashboardCookieJWTAuthentication])
-@permission_classes([IsAuthenticated, IsManager])
+@permission_classes([OriginPermission, IsAuthenticated, IsManager])
 def updateProductStock(request):
-    if origin_checker(request):
-        return HttpResponseForbidden(forbidden_message)
+
     try:
         data     = request.data
         pid      = data.get('productId')
@@ -472,7 +456,7 @@ def updateProductStock(request):
 
 @api_view(['POST'])
 @authentication_classes([DashboardCookieJWTAuthentication])
-@permission_classes([IsAuthenticated, IsManager])
+@permission_classes([OriginPermission, IsAuthenticated, IsManager])
 def process_deficiency(request):
     try:
         data         = json.loads(request.body)
@@ -510,7 +494,7 @@ def process_deficiency(request):
 
 @api_view(['GET'])
 @authentication_classes([DashboardCookieJWTAuthentication])
-@permission_classes([IsAuthenticated, IsManager])
+@permission_classes([OriginPermission, IsAuthenticated, IsManager])
 def get_product_stock_details(request):
     try:
         pid     = request.GET.get('productId')
@@ -524,7 +508,7 @@ def get_product_stock_details(request):
 
 @api_view(['GET'])
 @authentication_classes([DashboardCookieJWTAuthentication])
-@permission_classes([IsAuthenticated, IsDashboardUser])
+@permission_classes([OriginPermission, IsAuthenticated, IsDashboardUser])
 def get_orders(request):
     """
     Returns four order lists consumed by the React dashboard:
@@ -552,7 +536,7 @@ def get_orders(request):
 
 @api_view(['GET'])
 @authentication_classes([DashboardCookieJWTAuthentication])
-@permission_classes([IsAuthenticated, IsDashboardUser])
+@permission_classes([OriginPermission, IsAuthenticated, IsDashboardUser])
 def get_searched_order(request):
     try:
         order_id = request.GET.get('orderID')
@@ -572,7 +556,7 @@ def get_searched_order(request):
 
 @api_view(['GET'])
 @authentication_classes([DashboardCookieJWTAuthentication])
-@permission_classes([IsAuthenticated, IsDeliveryMan])
+@permission_classes([OriginPermission, IsAuthenticated, IsDeliveryMan])
 def delivery_man_orders(request):
     try:
         # FIX: was filter(status=True, waiting=False, delivered=False)
@@ -588,7 +572,7 @@ def delivery_man_orders(request):
 
 @api_view(['PATCH'])
 @authentication_classes([DashboardCookieJWTAuthentication])
-@permission_classes([IsAuthenticated, IsDeliveryMan])
+@permission_classes([OriginPermission, IsAuthenticated, IsDeliveryMan])
 def confirm_delivery(request, pk):
     try:
         username = request.data.get('username')

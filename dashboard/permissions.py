@@ -1,4 +1,12 @@
 from rest_framework.permissions import BasePermission
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+allowed_origins = os.environ.get('REQUEST_ALLOWED_ORIGINS')
+ALLOWED_ORIGINS = [allowed_origins]
+
 
 
 class IsAdmin(BasePermission):
@@ -39,3 +47,8 @@ class IsDashboardUser(BasePermission):
             and request.user.is_authenticated
             and request.user.role in ('admin', 'manager', 'delivery')
         )
+
+class OriginPermission(BasePermission):
+    def has_permission(self, request, view):
+        referer = request.META.get("HTTP_REFERER", "")
+        return referer in ALLOWED_ORIGINS
