@@ -218,7 +218,11 @@ SIMPLE_JWT = {
 
 APPEND_SLASH=False
 
-ALLOWED_HOSTS = [os.environ.get('ALLOWED_HOSTS')]
+ALLOWED_HOSTS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_HOSTS", "").split(",")
+    if origin.strip()
+]
 CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
