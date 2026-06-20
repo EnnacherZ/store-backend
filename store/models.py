@@ -17,22 +17,6 @@ is_paid_choices = [
     ('cod',       'Cash on Delivery'),  # COD: paid on delivery
 ]
 
-# Construire le chemin vers le fichier JSON
-PARAMS_PATH = os.path.join(base_dir, 'dashboard', 'parameters.json')
-
-file_lock = Lock()
-
-def load_params():
-    with file_lock, open(PARAMS_PATH, 'r', encoding='utf-8') as f:
-        return json.load(f)
-
-
-def get_choices(type_, label):
-    params = load_params()
-    values = params.get(type_, {}).get(label, [])
-    choices = [(value, value) for value in values]
-    return choices
-
 
 # ─── Models ───────────────────────────────────────────────────────────────────
  
@@ -80,9 +64,7 @@ class Product(models.Model):
     ref = models.CharField(max_length=100, unique=True)
     name = models.CharField(max_length=100)
 
-    price = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
+    price = models.FloatField(
         validators=[MinValueValidator(0)]
     )
 

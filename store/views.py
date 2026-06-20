@@ -192,24 +192,22 @@ ALLOWED_ORIGINS = [allowed_origins]
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
- 
+
 def get_ip_address(request):
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
     if x_forwarded_for:
         return x_forwarded_for.split(',')[0].strip()
     return request.META.get('REMOTE_ADDR')
- 
 
 
 
 
-# Create your views here.         
-     
+# Create your views here.
 
 
 
- 
-    
+
+
 @api_view(['POST'])
 @permission_classes([OriginPermission])
 def add_review(request):
@@ -230,7 +228,7 @@ def add_review(request):
                     date = datetime.datetime.fromisoformat(date_str)  # Si le format est correct, il sera converti
                     if not date:
                         return JsonResponse({'message': 'Invalid date format'}, status=status.HTTP_400_BAD_REQUEST)
-                
+
                 # Créer et enregistrer la nouvelle critique
                 product = Product.objects.get(id=id)
                 new_review = ProductReview(
@@ -252,14 +250,21 @@ def add_review(request):
 @permission_classes([OriginPermission])
 def get_reviews(request):
     #if origin_checker(request): return HttpResponseForbidden(forbbiden_message)
-        
+
         try:
             print(request.META.get('HTTP_REFERER'))
             pid = int(request.GET.get('product_id'))
             product_type = request.GET.get('productType')
             product_reviews = ProductReview.objects.filter(product_id = pid)
             serialized_reviews = ProductReviewSerializer(product_reviews, many=True)
-            products = Product.objects.filter(product_type=product_type, newest=True)
+            # FIX: product_type is now a @property derived from
+            # category.product_type (not a real column on Product), so it
+            # can no longer be used directly as a filter kwarg — that raised
+            # a FieldError. Filter through the relation instead, matching
+            # the pattern already used in get_searched_product/get_products.
+            products = Product.objects.filter(
+                category__product_type__name=product_type, newest=True
+            )
             serialized_products = ProductSerializer(products, many=True)
             print(serialized_reviews.data)
             return JsonResponse({'reviews':serialized_reviews.data, 'products':serialized_products.data}, status=status.HTTP_200_OK)
@@ -286,31 +291,22 @@ def get_searched_product(request):
 
         pid = int(pid)
 
-        # 🔹 Produit principal
         searched_product = Product.objects.get(
-            # category=cat,
-            # ref=ref,
+            category__name=cat,
+            ref=ref,
             id=pid
         )
 
         serialized = ProductSerializer(searched_product)
 
-        # 🔹 Reviews 
         reviews_query = ProductReview.objects.filter(product=pid)
-
         product_reviews = reviews_query.order_by('-stars')
+        serialized_reviews = ProductReviewSerializer(product_reviews, many=True)
 
-        serialized_reviews = ProductReviewSerializer(
-            product_reviews,
-            many=True
-        )
-
-        # 🔹 Produits similaires
         products = Product.objects.filter(
-            category=cat,
+            category__name=cat,
             newest=True
         )
-
         serialized_products = ProductSerializer(products, many=True)
 
         return JsonResponse(
@@ -375,7 +371,7 @@ def get_products(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-    
+
 
 @api_view(['GET'])
 @permission_classes([OriginPermission])
@@ -480,4 +476,3 @@ def get_all_products(request):
             {"message": f"An error occurred: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-

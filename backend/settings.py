@@ -200,6 +200,9 @@ REST_FRAMEWORK = {
         # Require authentication by default — override to AllowAny per view.
         'rest_framework.permissions.AllowAny',
     ],
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+    ),
 }
  
 # ── JWT ───────────────────────────────────────────────────────────────────────

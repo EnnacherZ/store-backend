@@ -366,7 +366,7 @@ class ProductParametersView(APIView):
     permission_classes = [OriginPermission]
     
     def get(self, request):
-        product_types = ProductType.objects.prefetch_related("categories")
+        product_types = ProductType.objects.prefetch_related("categories").order_by("id")
 
         data = {
             "types": [pt.name for pt in product_types],
