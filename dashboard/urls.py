@@ -3,6 +3,7 @@ from .views import *
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework.routers import DefaultRouter
 from store.views import get_products
+from .email_service import *
 
 # router = DefaultRouter()
 # router.register(r'shoes', ShoeViewSet)
@@ -39,4 +40,10 @@ urlpatterns = [
     path('deficiencies/get', get_deficiencies),
     path('deficiencies/process', process_deficiency),
     path('mandeliveryOrders', delivery_man_orders),
+
+    path("newsletter/stats/", dashboard_stats, name="dashboard-stats"),
+    path("newsletter/subscribers/", subscriber_list, name="subscriber-list"),
+    path("newsletter/campaigns/", campaign_list, name="campaign-list"),
+    path("newsletter/campaigns/<uuid:pk>/", campaign_detail, name="campaign-detail"),
+    path("newsletter/campaigns/send/", send_newsletter, name="send-newsletter"),
 ]

@@ -16,7 +16,8 @@ class ProductAdmin(admin.ModelAdmin):
         "category",
         "price",
         "promo",
-        "newest"
+        "newest",
+        "loyalty_points"
     )
 
     inlines = [ProductImageInline]
@@ -34,3 +35,6 @@ admin.site.register(ProductReview)
 admin.site.register(QuantityExceptions)
 admin.site.register(Order)
 admin.site.register(ClientProfile)
+admin.site.register(ProductType)
+admin.site.register(Subscriber)
+

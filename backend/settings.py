@@ -274,5 +274,8 @@ SOCIAL_LINKEDIN  = "https://linkedin.com/company/yourcompany"
 SOCIAL_INSTAGRAM = "https://instagram.com/yourhandle"
 SOCIAL_TIKTOK = "https://instagram.com/yourhandle"
 
+
+
+origin = os.getenv('ORIGIN', 'https://www.alfirdaousstore.com')
 # ── Unsubscribe link shown at the bottom of every email ───────────────────────
-UNSUBSCRIBE_URL  = "https://www.alfirdaousstore.com/newsletter/unsubscribe/"
+UNSUBSCRIBE_BASE_URL  = f"{origin}/newsletter/unsubscribe/"

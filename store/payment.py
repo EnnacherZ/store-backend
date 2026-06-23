@@ -48,36 +48,36 @@ def _release_reservations(order):
             continue
 
 
+def _award_loyalty_points(profile, points):
+    """
+    Add `points` to the ClientProfile's loyalty_points balance.
+    Uses F() expression + filter() to avoid race conditions and
+    to be a no-op when profile is None (guest) or points == 0.
+    """
+    if not profile or points <= 0:
+        return
+    ClientProfile.objects.filter(pk=profile.pk).update(
+        loyalty_points=models.F('loyalty_points') + points
+    )
 
 
 def get_or_create_client(client_data: dict, request) -> Client:
     """
     Creates (or reuses) a Client row and links it to a ClientProfile
     if the request carries a valid auth cookie.
-
-    Priority:
-      1. Authenticated user  → find existing Client by email+profile,
-                               or create one linked to their profile.
-      2. Guest               → create a plain Client (profile=None),
-                               same as before.
     """
     profile = None
 
-    # ── Try to identify a logged-in client ──────────────────────────────────
     try:
         auth = CookieJWTAuthentication()
         result = auth.authenticate(request)
         if result is not None:
             user, _ = result
-            # Only link if role=client (not admin/manager sneaking through)
             if getattr(user, 'role', None) == 'client':
                 profile = ClientProfile.objects.get(user=user)
     except Exception:
-        pass   # guest flow — no cookie or invalid token
+        pass
 
-    # ── Build the Client row ─────────────────────────────────────────────────
-    # For authenticated users: reuse an existing Client with the same email
-    # and profile so we don't create duplicates per order.
     if profile:
         client, _ = Client.objects.get_or_create(
             email   = client_data['Email'].strip().lower(),
@@ -91,7 +91,6 @@ def get_or_create_client(client_data: dict, request) -> Client:
                 'ip_address': client_data.get('ip_address'),
             }
         )
-        # Always refresh mutable fields in case the user updated their profile
         client.first_name = client_data['FirstName']
         client.last_name  = client_data['LastName']
         client.phone      = client_data['Phone']
@@ -99,7 +98,6 @@ def get_or_create_client(client_data: dict, request) -> Client:
         client.address    = client_data['Address']
         client.save()
     else:
-        # Guest — plain Client, no profile link (existing behaviour)
         client = Client.objects.create(
             first_name = client_data['FirstName'],
             last_name  = client_data['LastName'],
@@ -129,7 +127,7 @@ def _resolve_profile(request):
         user, _ = result
         if getattr(user, 'role', None) != 'client':
             return None
-        return user.client_profile          # OneToOne reverse accessor
+        return user.client_profile
     except Exception:
         return None
 
@@ -137,12 +135,6 @@ def _resolve_profile(request):
 def _record_exception(client, order, product, size, shortfall):
     """
     Creates a QuantityExceptions row for a stock shortfall.
-
-    NOTE — model-architecture fix: QuantityExceptions.product_ref is a
-    PositiveIntegerField (it used to be a CharField holding Product.ref,
-    e.g. "REF-001"). Product.ref is still a CharField, so it can no longer
-    be stored here directly. Product.id is the only integer identifier
-    available on Product, so it's used as the numeric reference instead.
     Returns the new exception_id (UUID).
     """
     exception_id = uuid.uuid4()
@@ -164,11 +156,6 @@ def _primary_image_url(product):
     """
     Returns the primary product image URL, or the first available image,
     or None if the product has no images at all.
-
-    NOTE: Product has no `.image` field of its own — images live on the
-    related ProductImage model (related_name="images"). Uses .filter().first()
-    rather than .get() so this never raises if a product ends up with zero
-    or more than one is_primary=True image.
     """
     image = product.images.filter(is_primary=True).first() or product.images.first()
     return image.image.url if image else None
@@ -210,7 +197,7 @@ def getPaymentUrl(request):
             city       = customer_params['city'],
             address    = customer_params['address'],
             ip_address = ip_address,
-            profile    = profile,           # None for guests, FK for registered clients
+            profile    = profile,
         )
 
         # ── Create order (amount computed below) ──────────────────
@@ -254,17 +241,14 @@ def getPaymentUrl(request):
 
                 exception_id = None
 
-                # Handle stock shortage
                 if not can_fulfill:
                     shortfall    = requested_qty - available_qty
                     exception_id = _record_exception(
                         new_client, new_order, product, item['size'], shortfall
                     )
-
                     new_order.exception = True
                     new_order.save(update_fields=['exception'])
 
-                # Create ordered product
                 OrderedProduct.objects.create(
                     client         = new_client,
                     order          = new_order,
@@ -306,37 +290,30 @@ def getPaymentUrl(request):
 
             token_data = TokenData(
                 order_id      = str(new_order.order_id),
-                amount        = str(int(new_order.amount * 100)),  # in cents
+                amount        = str(int(new_order.amount * 100)),
                 currency      = currency,
                 customer_ip   = "",
-                # Embed order_id in the success URL — YouCanPay will append transaction_id
-                # and payment_status automatically, giving us everything we need on redirect.
                 success_url   = f"{success_url}?order_id={new_order.order_id}",
                 error_url     = error_url,
                 customer_info = customer_info,
                 metadata      = {"info": "payment"},
             )
 
-
             payment_url = youcan_pay.token.create_from(token_data).get_payment_url(lang=lang)
 
             return JsonResponse({
                 "payment_url" : payment_url,
                 "order_id"    : str(new_order.order_id),
-                "amount"      : new_order.amount,    # authoritative total
+                "amount"      : new_order.amount,
                 "currency"    : currency,
                 "shipping_fee": SHIPPING_FEE,
             })
 
         except Exception as e:
-            # Release reserved stock if payment init fails
             _release_reservations(new_order)
-
             new_order.is_paid = 'failed'
             new_order.save(update_fields=['is_paid'])
-
             traceback.print_exc()
-
             return JsonResponse({
                 'message': 'Failed to generate payment URL.',
                 'type'   : type(e).__name__,
@@ -356,6 +333,11 @@ def getPaymentUrl(request):
 #
 # Online payment : converts reservations → real deductions.
 # COD            : creates the order and deducts stock immediately.
+#
+# Loyalty points : awarded to registered clients (profile != None) only,
+#                  calculated as product.loyalty_points × fulfilled quantity.
+#                  Points are only earned for stock that was actually deducted
+#                  (shortfall items that couldn't be fulfilled are excluded).
 #
 @api_view(['POST'])
 @permission_classes([OriginPermission])
@@ -395,6 +377,9 @@ def handle_payment(request):
                 stock_deducted=False
             )
 
+            # Accumulate loyalty points across all fulfilled items
+            total_loyalty_points = 0
+
             for op in pending_ops:
 
                 product_stock = ProductStock.objects.select_for_update().get(
@@ -402,6 +387,7 @@ def handle_payment(request):
                     size=op.size
                 )
 
+                # `deduct` = quantity actually removed from physical stock
                 deduct = min(op.quantity, product_stock.reserved)
 
                 product_stock.reserved -= deduct
@@ -413,6 +399,9 @@ def handle_payment(request):
 
                 product = Product.objects.get(id=op.product_id)
 
+                # Points are earned only for the quantity actually fulfilled
+                total_loyalty_points += product.loyalty_points * deduct
+
                 ordered_products.append({
                     "productType" : op.product_type,
                     "size"        : op.size,
@@ -422,14 +411,14 @@ def handle_payment(request):
                     "name"        : op.name,
                     "id"          : op.product_id,
                     "price"       : op.price,
-                    # FIX: Product has no `.image` field — images live on the
-                    # related ProductImage model. Use the same helper as the
-                    # COD branch below instead of the non-existent attribute.
                     "image"       : _primary_image_url(product),
                     "promo"       : product.promo,
                     "available"   : op.available,
                     "exception_id": str(op.exception_id) if op.exception_id else None,
                 })
+
+            # Award accumulated points to the registered client's profile (guests: no-op)
+            _award_loyalty_points(order.client.profile, total_loyalty_points)
 
         # ──────────────────────────────────────────────────────────
         # CASH ON DELIVERY — create order and deduct stock now
@@ -445,7 +434,7 @@ def handle_payment(request):
                 city       = client_data['City'],
                 address    = client_data['Address'],
                 ip_address = get_ip_address(request),
-                profile    = profile,       # None for guests, FK for registered clients
+                profile    = profile,
             )
             order = Order.objects.create(
                 transaction_id = transaction_id,
@@ -456,7 +445,8 @@ def handle_payment(request):
                 currency       = client_data.get('Currency', 'MAD'),
             )
 
-            total_amount = 0
+            total_amount         = 0
+            total_loyalty_points = 0   # accumulator for this order
 
             for item in items:
                 try:
@@ -485,6 +475,9 @@ def handle_payment(request):
                     line_total       = discounted_price * deducted_qty
                     total_amount    += line_total
 
+                    # Points are earned only for the quantity actually deducted
+                    total_loyalty_points += product.loyalty_points * deducted_qty
+
                     exception_id = None
 
                     if not can_fulfill:
@@ -492,7 +485,6 @@ def handle_payment(request):
                         exception_id = _record_exception(
                             new_client, order, product, item['size'], shortfall
                         )
-
                         order.exception = True
                         order.save(update_fields=['exception'])
 
@@ -533,6 +525,9 @@ def handle_payment(request):
             # Final amount = products + free shipping
             order.amount = round(total_amount + SHIPPING_FEE, 2)
             order.save(update_fields=['amount'])
+
+            # Award accumulated points to the registered client's profile (guests: no-op)
+            _award_loyalty_points(profile, total_loyalty_points)
 
 
         return JsonResponse({
@@ -590,11 +585,9 @@ def handle_verify(request):
         try:
             order = Order.objects.get(order_id=order_id, transaction_id=transaction_id)
         except Order.DoesNotExist:
-            # Order may not have the transaction_id stamped yet (webhook pending)
             try:
                 order = Order.objects.get(order_id=order_id)
             except Order.DoesNotExist:
-                # Order doesn't exist at all → still pending (webhook creates it for some flows)
                 return JsonResponse(
                     {"verified": False, "status": "pending", "reason": "Order not found yet."},
                     status=200,
@@ -612,7 +605,6 @@ def handle_verify(request):
                 status=200,
             )
 
-        # is_paid == 'confirmed' (set by webhook)
         return JsonResponse({"verified": True, "status": "confirmed"}, status=200)
 
     except Exception as e:
@@ -633,8 +625,6 @@ def handle_verify(request):
 #   - Do NOT touch ProductStock at all — reservation is still held
 #   - Reset is_paid → 'pending' so verify polling works again
 #   - Generate a fresh YCPay payment URL for the same order
-#
-# This means stock is never double-reserved and never prematurely released.
 
 @api_view(['POST'])
 @permission_classes([OriginPermission])
@@ -642,21 +632,20 @@ def handle_verify(request):
 def retry_payment_url(request):
 
     try:
-        data       = json.loads(request.body)
-        order_id   = data.get('order_id', '').strip()
-        token_params  = data.get('tokenParams', {})
-        lang       = token_params.get('lang', 'en')
+        data        = json.loads(request.body)
+        order_id    = data.get('order_id', '').strip()
+        token_params = data.get('tokenParams', {})
+        lang        = token_params.get('lang', 'en')
         success_url = token_params.get('success_url')
         error_url   = token_params.get('error_url')
 
         if not order_id:
             return JsonResponse({'message': 'Missing order_id.'}, status=400)
 
-        # Fetch the existing failed/timed-out order
         try:
             order = Order.objects.select_for_update().get(
                 order_id=order_id,
-                payment_mode=True,          # must be an online order
+                payment_mode=True,
             )
             if order.is_paid in ['confirmed', 'cod']:
                 return JsonResponse({'message': 'Order is already treated.'}, status=423)
@@ -664,14 +653,12 @@ def retry_payment_url(request):
         except Order.DoesNotExist:
             return JsonResponse({'message': 'Order not found or not retryable.'}, status=404)
 
-        # Reset status so verify polling treats it as a fresh attempt
         order.is_paid        = 'pending'
-        order.transaction_id = None        # will be stamped by the new webhook
+        order.transaction_id = None
         order.save(update_fields=['is_paid', 'transaction_id'])
 
         client = order.client
 
-        # Generate a new YCPay token for the same order_id and amount
         try:
             if is_sandbox:
                 YouCanPay.enable_sandbox_mode()
@@ -700,10 +687,9 @@ def retry_payment_url(request):
             return JsonResponse({
                 'payment_url': payment_url,
                 'order_id'   : str(order.order_id),
-                }, status = status.HTTP_200_OK)
+                }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            # YCPay call failed — revert status so the order stays retryable
             order.is_paid = 'failed'
             order.save(update_fields=['is_paid'])
             traceback.print_exc()
@@ -748,7 +734,6 @@ def cancel_payment(request):
         except Order.DoesNotExist:
             return JsonResponse({'message': 'Order not found or already processed.'}, status=423)
 
-        # Release reservations
         _release_reservations(order)
 
         order.is_paid = 'failed'

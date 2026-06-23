@@ -28,13 +28,13 @@ from dashboard.permissions import OriginPermission
 load_dotenv()
 User = get_user_model()
 
-_frontend_url = os.environ.get('REQUEST_ALLOWED_ORIGINS', '')
+_frontend_url = os.environ.get('ORIGIN', 'https://www.alfirdaousstore.com')
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _activation_url(code: uuid.UUID) -> str:
-    return f"{_frontend_url}account/activate/{code}/"
+    return f"{_frontend_url}/account/activate/{code}/"
 
 
 def _set_auth_cookies(response: Response, access: str, refresh: str) -> None:
@@ -85,7 +85,7 @@ class IsClient(permissions.BasePermission):
 
 class SignUpClientView(APIView):
     permission_classes = [OriginPermission]
-
+ 
     def post(self, request):
         data = request.data
         try:
@@ -96,15 +96,15 @@ class SignUpClientView(APIView):
                     {'error': f"Champs manquants : {', '.join(missing)}"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
+ 
             email = data['email'].strip().lower()
-
+ 
             if User.objects.filter(username=email).exists():
                 return Response(
                     {'error': 'Un compte avec cet email existe déjà.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
+ 
             user = User.objects.create_user(
                 username   = email,
                 email      = email,
@@ -114,13 +114,15 @@ class SignUpClientView(APIView):
                 role       = 'client',
                 is_active  = False,
             )
-
+ 
             profile = ClientProfile.objects.create(
                 user    = user,
-                phone   = data.get('phone', ''),
+                phone   = data.get('phone',   ''),
                 address = data.get('address', ''),
+                city    = data.get('city',    ''),
+                country = data.get('country', ''),
             )
-
+ 
             send_mail(
                 'Activez votre compte Al-Firdaous Store',
                 (
@@ -133,16 +135,16 @@ class SignUpClientView(APIView):
                 [email],
                 fail_silently=False,
             )
-
+ 
             return Response(
                 {'message': 'Compte créé. Vérifiez votre boîte mail pour activer votre compte.'},
                 status=status.HTTP_201_CREATED,
             )
-
+ 
         except Exception as e:
             traceback.print_exc()
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
+ 
 
 # ════════════════════════════════════════════════════════════════════════════
 # ACTIVATE

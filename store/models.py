@@ -78,6 +78,11 @@ class Product(models.Model):
         ]
     )
 
+    loyalty_points = models.PositiveIntegerField(
+        default=0,
+        help_text="Points awarded to the client when this product is purchased"
+    )
+    
     def __str__(self):
         return f"{self.ref} - {self.name}"
 
@@ -224,7 +229,6 @@ class OrderedProduct(models.Model):
     price        = models.FloatField(validators=[MinValueValidator(0)])
     available    = models.BooleanField(default=True)
     exception_id = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True, null=True)
- 
     # True  = stock has been physically deducted (confirmed/COD)
     # False = still just reserved (pending online payment)
     stock_deducted = models.BooleanField(default=False, editable=False)
@@ -245,3 +249,56 @@ class QuantityExceptions(models.Model):
     delta_quantity   = models.PositiveIntegerField()
     treated          = models.BooleanField(default=False)
 
+
+
+
+
+class Subscriber(models.Model):
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("unsubscribed", "Unsubscribed"),
+        ("bounced", "Bounced"),
+    ]
+ 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField(unique=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
+    subscribed_at = models.DateTimeField(auto_now_add=True)
+    unsubscribed_at = models.DateTimeField(null=True, blank=True)
+ 
+    class Meta:
+        ordering = ["-subscribed_at"]
+ 
+    def __str__(self):
+        return f"{self.email} ({self.status})"
+ 
+ 
+class NewsletterCampaign(models.Model):
+    STATUS_CHOICES = [
+        ("draft", "Draft"),
+        ("scheduled", "Scheduled"),
+        ("sending", "Sending"),
+        ("sent", "Sent"),
+        ("failed", "Failed"),
+    ]
+ 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    subject = models.CharField(max_length=255)
+    preview_text = models.CharField(max_length=255, blank=True)
+    body_html = models.TextField(help_text="HTML content of the newsletter body")
+    body_text = models.TextField(blank=True, help_text="Plain-text fallback")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft")
+    scheduled_at = models.DateTimeField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+ 
+    recipients_count = models.PositiveIntegerField(default=0)
+    sent_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+ 
+    class Meta:
+        ordering = ["-created_at"]
+ 
+    def __str__(self):
+        return f"{self.subject} [{self.status}]"

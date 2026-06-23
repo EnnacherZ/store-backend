@@ -15,6 +15,7 @@ from .client_profile import (
     ClientOrdersView,
 )
 from .payment import *
+from .email_service import *
 
 urlpatterns = [
     # ── Webhook ───────────────────────────────────────────────────────────────
@@ -52,4 +53,6 @@ urlpatterns = [
 
     # ── Email ─────────────────────────────────────────────────────────────────
     path('send_mail/',           envoyer_email),
+    path("newsletter/subscribe/", subscribe, name="subscribe"),
+    path("newsletter/unsubscribe/", unsubscribe, name="unsubscribe"),
 ]

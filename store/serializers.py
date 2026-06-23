@@ -115,3 +115,38 @@ class QuantityExceptionsSerializer(serializers.ModelSerializer):
     class Meta:
         model = QuantityExceptions
         fields = '__all__'
+
+
+
+
+class SubscribeSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        return value.lower().strip()
+
+
+class SubscriberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Subscriber
+        fields = ["id", "email", "status", "subscribed_at", "unsubscribed_at"]
+        read_only_fields = ["id", "subscribed_at", "unsubscribed_at"]
+
+
+class NewsletterCampaignSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NewsletterCampaign
+        fields = [
+            "id", "subject", "preview_text", "body_html", "body_text",
+            "status", "scheduled_at", "sent_at", "created_at", "updated_at",
+            "recipients_count", "sent_count", "failed_count",
+        ]
+        read_only_fields = [
+            "id", "status", "sent_at", "created_at", "updated_at",
+            "recipients_count", "sent_count", "failed_count",
+        ]
+
+
+class SendCampaignSerializer(serializers.Serializer):
+    campaign_id = serializers.UUIDField()
+    test_email = serializers.EmailField(required=False, allow_blank=True)
